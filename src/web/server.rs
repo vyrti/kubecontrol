@@ -3,7 +3,7 @@
 use crate::error::Result;
 use crate::web::{assets::serve_assets, handlers, websocket};
 use axum::{
-    routing::get,
+    routing::{delete, get, post, put},
     Router,
 };
 use std::net::SocketAddr;
@@ -23,19 +23,83 @@ pub async fn start_server(port: u16, context: Option<String>, namespace: Option<
 
     // Build router
     let app = Router::new()
-        // API endpoints
+        // === Pulse (cluster overview) ===
+        .route("/api/pulse", get(handlers::get_pulse))
+
+        // === Pod endpoints ===
         .route("/api/pods", get(handlers::list_pods))
         .route("/api/pods/{ns}/{name}", get(handlers::get_pod))
+        .route("/api/pods/{ns}/{name}", delete(handlers::delete_pod))
         .route("/api/pods/{ns}/{name}/logs", get(handlers::get_pod_logs))
+
+        // === Deployment endpoints ===
         .route("/api/deployments", get(handlers::list_deployments))
+        .route("/api/deployments/{ns}/{name}", get(handlers::get_deployment))
+        .route("/api/deployments/{ns}/{name}", delete(handlers::delete_deployment))
+        .route("/api/deployments/{ns}/{name}/scale", put(handlers::scale_deployment))
+        .route("/api/deployments/{ns}/{name}/restart", post(handlers::restart_deployment))
+
+        // === Service endpoints ===
         .route("/api/services", get(handlers::list_services))
+        .route("/api/services/{ns}/{name}", get(handlers::get_service))
+        .route("/api/services/{ns}/{name}", delete(handlers::delete_service))
+
+        // === ConfigMap endpoints ===
+        .route("/api/configmaps", get(handlers::list_configmaps))
+        .route("/api/configmaps/{ns}/{name}", get(handlers::get_configmap))
+        .route("/api/configmaps/{ns}/{name}", delete(handlers::delete_configmap))
+
+        // === Secret endpoints ===
+        .route("/api/secrets", get(handlers::list_secrets))
+        .route("/api/secrets/{ns}/{name}", get(handlers::get_secret))
+        .route("/api/secrets/{ns}/{name}", delete(handlers::delete_secret))
+
+        // === ReplicaSet endpoints ===
+        .route("/api/replicasets", get(handlers::list_replicasets))
+        .route("/api/replicasets/{ns}/{name}", delete(handlers::delete_replicaset))
+
+        // === StatefulSet endpoints ===
+        .route("/api/statefulsets", get(handlers::list_statefulsets))
+        .route("/api/statefulsets/{ns}/{name}", delete(handlers::delete_statefulset))
+        .route("/api/statefulsets/{ns}/{name}/scale", put(handlers::scale_statefulset))
+        .route("/api/statefulsets/{ns}/{name}/restart", post(handlers::restart_statefulset))
+
+        // === DaemonSet endpoints ===
+        .route("/api/daemonsets", get(handlers::list_daemonsets))
+        .route("/api/daemonsets/{ns}/{name}", delete(handlers::delete_daemonset))
+        .route("/api/daemonsets/{ns}/{name}/restart", post(handlers::restart_daemonset))
+
+        // === Namespace endpoints ===
         .route("/api/namespaces", get(handlers::list_namespaces))
+        .route("/api/namespaces/{name}", get(handlers::get_namespace))
+        .route("/api/namespaces/{name}", delete(handlers::delete_namespace))
+
+        // === Node endpoints ===
         .route("/api/nodes", get(handlers::list_nodes))
+        .route("/api/nodes/{name}", get(handlers::get_node))
+        .route("/api/nodes/{name}/cordon", post(handlers::cordon_node))
+        .route("/api/nodes/{name}/uncordon", post(handlers::uncordon_node))
+
+        // === Events endpoints ===
+        .route("/api/events", get(handlers::list_events))
+
+        // === Search endpoint ===
+        .route("/api/search", get(handlers::search_resources))
+
+        // === Health scanner endpoint ===
+        .route("/api/health/scan", get(handlers::scan_health))
+
+        // === Context endpoints ===
         .route("/api/contexts", get(handlers::list_contexts_handler))
         .route("/api/context", get(handlers::get_current_context))
-        // WebSocket endpoints
+
+        // === Apply endpoint ===
+        .route("/api/apply", post(handlers::apply_yaml))
+
+        // === WebSocket endpoints ===
         .route("/api/ws/logs/{ns}/{name}", get(websocket::ws_logs_handler))
         .route("/api/ws/exec/{ns}/{name}", get(websocket::ws_exec_handler))
+
         // Serve embedded frontend
         .fallback(serve_assets)
         .layer(cors)
@@ -44,8 +108,7 @@ pub async fn start_server(port: u16, context: Option<String>, namespace: Option<
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let url = format!("http://{}", addr);
 
-    println!("🚀 Dashboard running at {}", url);
-    println!("🔑 Token: (auto-authenticated via localhost)");
+    println!("Dashboard running at {}", url);
 
     // Open browser if requested
     if open_browser {

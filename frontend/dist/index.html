@@ -12,16 +12,18 @@
         }
 
         :root {
-            --bg-primary: #1a1a2e;
-            --bg-secondary: #16213e;
-            --bg-card: #0f3460;
-            --text-primary: #eee;
-            --text-secondary: #aaa;
-            --accent: #e94560;
-            --success: #4ade80;
-            --warning: #fbbf24;
-            --error: #ef4444;
-            --border: #333;
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-card: #21262d;
+            --bg-hover: #30363d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --accent-hover: #79c0ff;
+            --success: #3fb950;
+            --warning: #d29922;
+            --error: #f85149;
+            --border: #30363d;
         }
 
         body {
@@ -29,67 +31,124 @@
             background: var(--bg-primary);
             color: var(--text-primary);
             min-height: 100vh;
+            font-size: 14px;
         }
 
         .header {
             background: var(--bg-secondary);
-            padding: 1rem 2rem;
+            padding: 0.75rem 1.5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
 
         .header h1 {
-            font-size: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
         }
 
         .header h1 span {
             color: var(--accent);
         }
 
-        .context-info {
+        .header-controls {
             display: flex;
-            gap: 1rem;
+            gap: 0.75rem;
             align-items: center;
         }
 
-        .context-badge {
+        select, input, button {
             background: var(--bg-card);
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
             font-size: 0.875rem;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        button {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: var(--bg-hover);
+            border-color: var(--accent);
+        }
+
+        button.primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        button.primary:hover {
+            background: var(--accent-hover);
+        }
+
+        button.danger {
+            color: var(--error);
+        }
+
+        button.danger:hover {
+            background: rgba(248, 81, 73, 0.1);
+            border-color: var(--error);
         }
 
         .main {
             display: grid;
             grid-template-columns: 200px 1fr;
-            min-height: calc(100vh - 60px);
+            min-height: calc(100vh - 53px);
         }
 
         .sidebar {
             background: var(--bg-secondary);
-            padding: 1rem;
+            padding: 1rem 0;
             border-right: 1px solid var(--border);
+            overflow-y: auto;
+        }
+
+        .nav-section {
+            margin-bottom: 1rem;
+        }
+
+        .nav-section-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            font-weight: 600;
         }
 
         .nav-item {
-            padding: 0.75rem 1rem;
-            margin: 0.25rem 0;
-            border-radius: 4px;
+            padding: 0.5rem 1rem;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
         }
 
-        .nav-item:hover, .nav-item.active {
-            background: var(--bg-card);
+        .nav-item:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
         }
 
         .nav-item.active {
-            border-left: 3px solid var(--accent);
+            background: rgba(88, 166, 255, 0.1);
+            color: var(--accent);
+            border-left: 2px solid var(--accent);
         }
 
         .content {
@@ -97,34 +156,29 @@
             overflow-y: auto;
         }
 
-        .section-header {
+        .toolbar {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 0.75rem;
         }
 
-        .section-header h2 {
+        .toolbar h2 {
             font-size: 1.25rem;
+            font-weight: 600;
         }
 
-        .refresh-btn {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .refresh-btn:hover {
-            background: var(--accent);
+        .toolbar-actions {
+            display: flex;
+            gap: 0.5rem;
         }
 
         .table-container {
             background: var(--bg-secondary);
             border-radius: 8px;
+            border: 1px solid var(--border);
             overflow: hidden;
         }
 
@@ -142,35 +196,42 @@
         th {
             background: var(--bg-card);
             font-weight: 600;
-            font-size: 0.875rem;
+            font-size: 0.75rem;
             text-transform: uppercase;
             color: var(--text-secondary);
+            position: sticky;
+            top: 0;
         }
 
         tr:hover {
-            background: rgba(233, 69, 96, 0.1);
+            background: var(--bg-hover);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
         }
 
         .status {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            padding: 0.125rem 0.5rem;
+            border-radius: 12px;
             font-size: 0.75rem;
-            font-weight: 600;
+            font-weight: 500;
         }
 
-        .status.running, .status.active, .status.ready {
-            background: rgba(74, 222, 128, 0.2);
+        .status.running, .status.active, .status.ready, .status.true, .status.normal {
+            background: rgba(63, 185, 80, 0.15);
             color: var(--success);
         }
 
-        .status.pending, .status.terminating {
-            background: rgba(251, 191, 36, 0.2);
+        .status.pending, .status.terminating, .status.unknown, .status.warning {
+            background: rgba(210, 153, 34, 0.15);
             color: var(--warning);
         }
 
-        .status.failed, .status.error, .status.crashloopbackoff {
-            background: rgba(239, 68, 68, 0.2);
+        .status.failed, .status.error, .status.crashloopbackoff, .status.false {
+            background: rgba(248, 81, 73, 0.15);
             color: var(--error);
         }
 
@@ -183,6 +244,17 @@
             text-decoration: underline;
         }
 
+        .actions {
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        .actions button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+
+        /* Modal styles */
         .modal {
             display: none;
             position: fixed;
@@ -190,7 +262,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.75);
             z-index: 1000;
             justify-content: center;
             align-items: center;
@@ -202,11 +274,14 @@
 
         .modal-content {
             background: var(--bg-secondary);
-            width: 80%;
-            max-width: 1000px;
-            max-height: 80vh;
+            width: 90%;
+            max-width: 900px;
+            max-height: 85vh;
             border-radius: 8px;
+            border: 1px solid var(--border);
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
         .modal-header {
@@ -218,73 +293,559 @@
             border-bottom: 1px solid var(--border);
         }
 
+        .modal-header h3 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
         .modal-close {
             background: none;
             border: none;
-            color: var(--text-primary);
+            color: var(--text-secondary);
             font-size: 1.5rem;
             cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 1rem;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-footer {
+            padding: 1rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
         }
 
         .logs-container {
+            background: #000;
             padding: 1rem;
-            height: 60vh;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 0.8125rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-all;
+            min-height: 400px;
+            max-height: 60vh;
             overflow-y: auto;
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 0.875rem;
+            border-radius: 4px;
+        }
+
+        .yaml-container {
+            background: var(--bg-card);
+            padding: 1rem;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 0.8125rem;
             line-height: 1.5;
             white-space: pre-wrap;
-            background: #000;
+            overflow-x: auto;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+        }
+
+        textarea.yaml-editor {
+            width: 100%;
+            min-height: 300px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 0.8125rem;
+            padding: 1rem;
+            border-radius: 4px;
+            resize: vertical;
         }
 
         .loading {
             text-align: center;
-            padding: 2rem;
+            padding: 3rem;
             color: var(--text-secondary);
         }
 
         .error-message {
-            background: rgba(239, 68, 68, 0.2);
+            background: rgba(248, 81, 73, 0.15);
             color: var(--error);
             padding: 1rem;
-            border-radius: 4px;
+            border-radius: 6px;
             margin: 1rem 0;
+            border: 1px solid rgba(248, 81, 73, 0.3);
         }
 
-        .namespace-select {
+        .success-message {
+            background: rgba(63, 185, 80, 0.15);
+            color: var(--success);
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+
+        .badge {
+            background: var(--bg-card);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        .scale-input {
+            width: 80px;
+            text-align: center;
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .toast {
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            animation: slideIn 0.3s ease;
+            max-width: 350px;
+        }
+
+        .toast.success {
+            background: rgba(63, 185, 80, 0.9);
+            color: #fff;
+        }
+
+        .toast.error {
+            background: rgba(248, 81, 73, 0.9);
+            color: #fff;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state h3 {
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        /* Pulse Dashboard Styles */
+        .pulse-dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .pulse-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .pulse-card h4 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .pulse-card .value {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .pulse-card .subtitle {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .pulse-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .pulse-section h3 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .status-bar-container {
+            display: flex;
+            height: 24px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: var(--bg-card);
+            margin-bottom: 0.5rem;
+        }
+
+        .status-bar-segment {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #fff;
+            min-width: fit-content;
+            padding: 0 0.5rem;
+        }
+
+        .status-bar-segment.running { background: var(--success); }
+        .status-bar-segment.pending { background: var(--warning); }
+        .status-bar-segment.failed { background: var(--error); }
+        .status-bar-segment.succeeded { background: var(--accent); }
+        .status-bar-segment.unknown { background: var(--text-secondary); }
+
+        .status-legend {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            font-size: 0.75rem;
+        }
+
+        .status-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .status-legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .node-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .node-card {
+            background: var(--bg-card);
+            border-radius: 6px;
+            padding: 0.75rem;
+            border-left: 3px solid var(--success);
+        }
+
+        .node-card.not-ready {
+            border-left-color: var(--error);
+        }
+
+        .node-card .node-name {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+
+        .node-card .node-info {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .events-mini-list {
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .event-mini-item {
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 0.5rem;
+            align-items: flex-start;
+        }
+
+        .event-mini-item:last-child {
+            border-bottom: none;
+        }
+
+        .event-type-badge {
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+
+        .event-type-badge.warning {
+            background: rgba(210, 153, 34, 0.2);
+            color: var(--warning);
+        }
+
+        .event-type-badge.normal {
+            background: rgba(63, 185, 80, 0.2);
+            color: var(--success);
+        }
+
+        .event-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .event-reason {
+            font-weight: 500;
+            font-size: 0.8125rem;
+        }
+
+        .event-message {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .event-age {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+
+        kbd {
             background: var(--bg-card);
             border: 1px solid var(--border);
-            color: var(--text-primary);
-            padding: 0.5rem;
             border-radius: 4px;
-            margin-right: 1rem;
+            padding: 0.125rem 0.5rem;
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--text-primary);
+        }
+
+        tr.selected {
+            background: rgba(88, 166, 255, 0.15) !important;
+            outline: 1px solid var(--accent);
+        }
+
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th.sortable:hover {
+            color: var(--accent);
+        }
+
+        th.sortable::after {
+            content: '';
+            display: inline-block;
+            margin-left: 0.25rem;
+            opacity: 0.3;
+        }
+
+        th.sortable.asc::after {
+            content: '\u25B2';
+            opacity: 1;
+        }
+
+        th.sortable.desc::after {
+            content: '\u25BC';
+            opacity: 1;
+        }
+
+        /* Command palette / global search styles */
+        .search-result-item {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .search-result-item:hover,
+        .search-result-item.selected {
+            background: var(--bg-card);
+        }
+
+        .search-result-type {
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: var(--accent);
+            color: #fff;
+            min-width: 70px;
+            text-align: center;
+        }
+
+        .search-result-name {
+            font-weight: 500;
+        }
+
+        .search-result-ns {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+
+        /* Health scanner styles */
+        .health-summary {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .health-summary-card {
+            flex: 1;
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .health-summary-card.critical { background: rgba(248, 81, 73, 0.15); border: 1px solid var(--error); }
+        .health-summary-card.warning { background: rgba(210, 153, 34, 0.15); border: 1px solid var(--warning); }
+        .health-summary-card.info { background: rgba(88, 166, 255, 0.15); border: 1px solid var(--accent); }
+
+        .health-summary-card .count {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .health-summary-card.critical .count { color: var(--error); }
+        .health-summary-card.warning .count { color: var(--warning); }
+        .health-summary-card.info .count { color: var(--accent); }
+
+        .health-summary-card .label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        .health-issue {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 0.75rem;
+            align-items: flex-start;
+        }
+
+        .health-issue:hover {
+            background: var(--bg-card);
+        }
+
+        .health-severity {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            min-width: 60px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .health-severity.Critical { background: var(--error); color: #fff; }
+        .health-severity.Warning { background: var(--warning); color: #000; }
+        .health-severity.Info { background: var(--accent); color: #fff; }
+
+        .health-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .health-resource {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+
+        .health-resource-type {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+
+        .health-issue-text {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .health-recommendation {
+            font-size: 0.75rem;
+            color: var(--accent);
+            margin-top: 0.25rem;
         }
     </style>
 </head>
 <body>
     <header class="header">
         <h1><span>kc</span> Dashboard</h1>
-        <div class="context-info">
-            <select id="namespace-select" class="namespace-select">
+        <div class="header-controls">
+            <select id="namespace-select">
                 <option value="">All Namespaces</option>
             </select>
-            <div class="context-badge" id="context-badge">Loading...</div>
+            <select id="context-select"></select>
+            <button onclick="refreshData()">Refresh</button>
+            <button class="primary" onclick="showApplyModal()">+ Apply YAML</button>
         </div>
     </header>
 
     <main class="main">
         <nav class="sidebar">
-            <div class="nav-item active" data-view="pods">Pods</div>
-            <div class="nav-item" data-view="deployments">Deployments</div>
-            <div class="nav-item" data-view="services">Services</div>
-            <div class="nav-item" data-view="nodes">Nodes</div>
-            <div class="nav-item" data-view="namespaces">Namespaces</div>
+            <div class="nav-section">
+                <div class="nav-section-title">Overview</div>
+                <div class="nav-item" data-view="pulse">Pulse</div>
+                <div class="nav-item" data-view="health">Health</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">Workloads</div>
+                <div class="nav-item active" data-view="pods">Pods</div>
+                <div class="nav-item" data-view="deployments">Deployments</div>
+                <div class="nav-item" data-view="statefulsets">StatefulSets</div>
+                <div class="nav-item" data-view="daemonsets">DaemonSets</div>
+                <div class="nav-item" data-view="replicasets">ReplicaSets</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">Network</div>
+                <div class="nav-item" data-view="services">Services</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">Config</div>
+                <div class="nav-item" data-view="configmaps">ConfigMaps</div>
+                <div class="nav-item" data-view="secrets">Secrets</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">Cluster</div>
+                <div class="nav-item" data-view="nodes">Nodes</div>
+                <div class="nav-item" data-view="namespaces">Namespaces</div>
+                <div class="nav-item" data-view="events">Events</div>
+            </div>
         </nav>
 
         <div class="content">
-            <div class="section-header">
+            <div class="toolbar">
                 <h2 id="section-title">Pods</h2>
-                <button class="refresh-btn" onclick="refreshData()">Refresh</button>
+                <div class="toolbar-actions">
+                    <input type="text" id="search-input" placeholder="Filter..." oninput="filterTable()">
+                </div>
             </div>
 
             <div class="table-container">
@@ -296,89 +857,417 @@
         </div>
     </main>
 
+    <!-- Toast container -->
+    <div class="toast-container" id="toast-container"></div>
+
     <!-- Logs Modal -->
     <div class="modal" id="logs-modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 1100px;">
             <div class="modal-header">
                 <h3 id="logs-title">Logs</h3>
-                <button class="modal-close" onclick="closeLogsModal()">&times;</button>
+                <button class="modal-close" onclick="closeModal('logs-modal')">&times;</button>
             </div>
-            <div class="logs-container" id="logs-content">Loading logs...</div>
+            <div class="modal-body">
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
+                    <input type="text" id="logs-filter" placeholder="Filter logs (regex)..." style="flex: 1;">
+                    <select id="logs-tail" style="width: auto;">
+                        <option value="100">Last 100 lines</option>
+                        <option value="500" selected>Last 500 lines</option>
+                        <option value="1000">Last 1000 lines</option>
+                        <option value="5000">Last 5000 lines</option>
+                    </select>
+                    <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
+                        <input type="checkbox" id="logs-follow"> Follow
+                    </label>
+                    <button onclick="downloadLogs()">Download</button>
+                </div>
+                <div class="logs-container" id="logs-content">Loading logs...</div>
+            </div>
+            <div class="modal-footer">
+                <span id="logs-status" style="flex: 1; font-size: 0.75rem; color: var(--text-secondary);"></span>
+                <button onclick="closeModal('logs-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail/YAML Modal -->
+    <div class="modal" id="detail-modal">
+        <div class="modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h3 id="detail-title">Resource Details</h3>
+                <button class="modal-close" onclick="closeModal('detail-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="detail-view-container">
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <button id="detail-format-json" class="primary" onclick="setDetailFormat('json')">JSON</button>
+                        <button id="detail-format-yaml" onclick="setDetailFormat('yaml')">YAML</button>
+                        <span style="flex: 1;"></span>
+                        <button id="detail-edit-btn" onclick="enterEditMode()">Edit</button>
+                    </div>
+                    <div class="yaml-container" id="detail-content" style="max-height: 60vh; overflow-y: auto;">Loading...</div>
+                </div>
+                <div id="detail-edit-container" style="display: none;">
+                    <div style="margin-bottom: 0.5rem; font-size: 0.75rem; color: var(--text-secondary);">
+                        Edit the YAML below. Only spec and metadata changes are typically allowed.
+                    </div>
+                    <textarea class="yaml-editor" id="detail-editor" style="min-height: 400px; max-height: 60vh;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span id="detail-status" style="flex: 1; font-size: 0.75rem;"></span>
+                <button id="detail-cancel-edit" style="display: none;" onclick="cancelEditMode()">Cancel</button>
+                <button id="detail-save-btn" style="display: none;" class="primary" onclick="saveResourceEdit()">Save Changes</button>
+                <button id="detail-close-btn" onclick="closeModal('detail-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scale Modal -->
+    <div class="modal" id="scale-modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3 id="scale-title">Scale Resource</h3>
+                <button class="modal-close" onclick="closeModal('scale-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem;">Set the number of replicas:</p>
+                <input type="number" id="scale-replicas" class="scale-input" min="0" value="1">
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal('scale-modal')">Cancel</button>
+                <button class="primary" onclick="confirmScale()">Scale</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal" id="delete-modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3>Confirm Delete</h3>
+                <button class="modal-close" onclick="closeModal('delete-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="delete-message">Are you sure you want to delete this resource?</p>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal('delete-modal')">Cancel</button>
+                <button class="danger" onclick="confirmDelete()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Apply YAML Modal -->
+    <div class="modal" id="apply-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Apply YAML</h3>
+                <button class="modal-close" onclick="closeModal('apply-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <textarea class="yaml-editor" id="apply-yaml" placeholder="Paste your YAML manifest here..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal('apply-modal')">Cancel</button>
+                <button class="primary" onclick="applyYaml()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command Palette Modal -->
+    <div class="modal" id="search-modal">
+        <div class="modal-content" style="max-width: 600px; margin-top: 10vh;">
+            <div class="modal-header" style="padding: 0.5rem 1rem;">
+                <input type="text" id="global-search-input" placeholder="Search resources... (type to search)"
+                    style="flex: 1; border: none; background: transparent; font-size: 1.1rem; outline: none; color: var(--text-primary);"
+                    oninput="performGlobalSearch()" onkeydown="handleSearchKeydown(event)">
+                <kbd style="font-size: 0.625rem;">ESC</kbd>
+            </div>
+            <div class="modal-body" style="padding: 0; max-height: 60vh; overflow-y: auto;">
+                <div id="search-results" style="min-height: 100px;">
+                    <div style="padding: 1rem; color: var(--text-secondary); text-align: center;">
+                        Type to search across all resources
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Help Modal -->
+    <div class="modal" id="shortcuts-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>Keyboard Shortcuts</h3>
+                <button class="modal-close" onclick="closeModal('shortcuts-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display: grid; grid-template-columns: 80px 1fr; gap: 0.5rem; font-size: 0.875rem;">
+                    <div style="font-weight: 600; color: var(--accent);">Navigation</div>
+                    <div></div>
+                    <kbd>0</kbd><div>Pulse (overview)</div>
+                    <kbd>1</kbd><div>Pods</div>
+                    <kbd>2</kbd><div>Deployments</div>
+                    <kbd>3</kbd><div>StatefulSets</div>
+                    <kbd>4</kbd><div>DaemonSets</div>
+                    <kbd>5</kbd><div>Services</div>
+                    <kbd>6</kbd><div>ConfigMaps</div>
+                    <kbd>7</kbd><div>Nodes</div>
+                    <kbd>8</kbd><div>Events</div>
+                    <kbd>9</kbd><div>Namespaces</div>
+                    <div style="font-weight: 600; color: var(--accent); margin-top: 1rem;">Actions</div>
+                    <div></div>
+                    <kbd>Ctrl+K</kbd><div>Global search</div>
+                    <kbd>/</kbd><div>Filter current view</div>
+                    <kbd>r</kbd><div>Refresh</div>
+                    <kbd>a</kbd><div>Apply YAML</div>
+                    <kbd>j / k</kbd><div>Navigate up/down</div>
+                    <kbd>Enter</kbd><div>View details</div>
+                    <kbd>l</kbd><div>View logs (pods)</div>
+                    <kbd>s</kbd><div>Scale (deployments)</div>
+                    <kbd>d</kbd><div>Delete selected</div>
+                    <kbd>Esc</kbd><div>Close modal</div>
+                    <kbd>?</kbd><div>Show this help</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal('shortcuts-modal')">Close</button>
+            </div>
         </div>
     </div>
 
     <script>
         let currentView = 'pods';
         let currentNamespace = '';
+        let currentData = [];
+        let pendingDelete = null;
+        let pendingScale = null;
+        let logsWebSocket = null;
+        let selectedRowIndex = -1;
+        let currentLogsNamespace = '';
+        let currentLogsName = '';
+        let allLogs = '';
+
+        // Detail/edit state
+        let currentDetailData = null;
+        let currentDetailFormat = 'json';
+
+        // Sorting state per view
+        let sortState = {};
+
+        // View mappings for keyboard shortcuts (0-9)
+        const viewShortcuts = {
+            '0': 'pulse',
+            '1': 'pods',
+            '2': 'deployments',
+            '3': 'statefulsets',
+            '4': 'daemonsets',
+            '5': 'services',
+            '6': 'configmaps',
+            '7': 'nodes',
+            '8': 'events',
+            '9': 'namespaces'
+        };
 
         const views = {
             pods: {
                 endpoint: '/api/pods',
                 headers: ['Name', 'Namespace', 'Status', 'Ready', 'Restarts', 'Age', 'Actions'],
                 row: (item) => `
-                    <td class="clickable" onclick="showLogs('${item.namespace}', '${item.name}')">${item.name}</td>
+                    <td class="clickable" onclick="showDetail('pods', '${item.namespace}', '${item.name}')">${item.name}</td>
                     <td>${item.namespace}</td>
                     <td><span class="status ${item.status.toLowerCase()}">${item.status}</span></td>
                     <td>${item.ready}</td>
                     <td>${item.restarts}</td>
                     <td>${item.age}</td>
-                    <td><button onclick="showLogs('${item.namespace}', '${item.name}')" class="refresh-btn">Logs</button></td>
+                    <td class="actions">
+                        <button onclick="showLogs('${item.namespace}', '${item.name}')">Logs</button>
+                        <button class="danger" onclick="showDeleteConfirm('pods', '${item.namespace}', '${item.name}')">Delete</button>
+                    </td>
                 `
             },
             deployments: {
                 endpoint: '/api/deployments',
-                headers: ['Name', 'Namespace', 'Ready', 'Up-to-date', 'Available', 'Age'],
+                headers: ['Name', 'Namespace', 'Ready', 'Up-to-date', 'Available', 'Age', 'Actions'],
                 row: (item) => `
-                    <td>${item.name}</td>
+                    <td class="clickable" onclick="showDetail('deployments', '${item.namespace}', '${item.name}')">${item.name}</td>
                     <td>${item.namespace}</td>
                     <td>${item.ready}</td>
                     <td>${item.up_to_date}</td>
                     <td>${item.available}</td>
                     <td>${item.age}</td>
+                    <td class="actions">
+                        <button onclick="showScaleModal('deployments', '${item.namespace}', '${item.name}', ${item.replicas})">Scale</button>
+                        <button onclick="restartResource('deployments', '${item.namespace}', '${item.name}')">Restart</button>
+                        <button class="danger" onclick="showDeleteConfirm('deployments', '${item.namespace}', '${item.name}')">Delete</button>
+                    </td>
+                `
+            },
+            statefulsets: {
+                endpoint: '/api/statefulsets',
+                headers: ['Name', 'Namespace', 'Ready', 'Age', 'Actions'],
+                row: (item) => `
+                    <td class="clickable" onclick="showDetail('statefulsets', '${item.namespace}', '${item.name}')">${item.name}</td>
+                    <td>${item.namespace}</td>
+                    <td>${item.ready}</td>
+                    <td>${item.age}</td>
+                    <td class="actions">
+                        <button onclick="showScaleModal('statefulsets', '${item.namespace}', '${item.name}', ${item.replicas})">Scale</button>
+                        <button onclick="restartResource('statefulsets', '${item.namespace}', '${item.name}')">Restart</button>
+                        <button class="danger" onclick="showDeleteConfirm('statefulsets', '${item.namespace}', '${item.name}')">Delete</button>
+                    </td>
+                `
+            },
+            daemonsets: {
+                endpoint: '/api/daemonsets',
+                headers: ['Name', 'Namespace', 'Desired', 'Current', 'Ready', 'Age', 'Actions'],
+                row: (item) => `
+                    <td class="clickable" onclick="showDetail('daemonsets', '${item.namespace}', '${item.name}')">${item.name}</td>
+                    <td>${item.namespace}</td>
+                    <td>${item.desired}</td>
+                    <td>${item.current}</td>
+                    <td>${item.ready}</td>
+                    <td>${item.age}</td>
+                    <td class="actions">
+                        <button onclick="restartResource('daemonsets', '${item.namespace}', '${item.name}')">Restart</button>
+                        <button class="danger" onclick="showDeleteConfirm('daemonsets', '${item.namespace}', '${item.name}')">Delete</button>
+                    </td>
+                `
+            },
+            replicasets: {
+                endpoint: '/api/replicasets',
+                headers: ['Name', 'Namespace', 'Desired', 'Current', 'Ready', 'Age', 'Actions'],
+                row: (item) => `
+                    <td>${item.name}</td>
+                    <td>${item.namespace}</td>
+                    <td>${item.desired}</td>
+                    <td>${item.current}</td>
+                    <td>${item.ready}</td>
+                    <td>${item.age}</td>
+                    <td class="actions">
+                        <button class="danger" onclick="showDeleteConfirm('replicasets', '${item.namespace}', '${item.name}')">Delete</button>
+                    </td>
                 `
             },
             services: {
                 endpoint: '/api/services',
-                headers: ['Name', 'Namespace', 'Type', 'Cluster IP', 'External IP', 'Ports', 'Age'],
+                headers: ['Name', 'Namespace', 'Type', 'Cluster IP', 'External IP', 'Ports', 'Age', 'Actions'],
                 row: (item) => `
-                    <td>${item.name}</td>
+                    <td class="clickable" onclick="showDetail('services', '${item.namespace}', '${item.name}')">${item.name}</td>
                     <td>${item.namespace}</td>
                     <td>${item.service_type}</td>
                     <td>${item.cluster_ip}</td>
-                    <td>${item.external_ip}</td>
+                    <td>${item.external_ip || '-'}</td>
                     <td>${item.ports}</td>
                     <td>${item.age}</td>
+                    <td class="actions">
+                        <button class="danger" onclick="showDeleteConfirm('services', '${item.namespace}', '${item.name}')">Delete</button>
+                    </td>
+                `
+            },
+            configmaps: {
+                endpoint: '/api/configmaps',
+                headers: ['Name', 'Namespace', 'Data', 'Age', 'Actions'],
+                row: (item) => `
+                    <td class="clickable" onclick="showDetail('configmaps', '${item.namespace}', '${item.name}')">${item.name}</td>
+                    <td>${item.namespace}</td>
+                    <td>${item.data_count}</td>
+                    <td>${item.age}</td>
+                    <td class="actions">
+                        <button class="danger" onclick="showDeleteConfirm('configmaps', '${item.namespace}', '${item.name}')">Delete</button>
+                    </td>
+                `
+            },
+            secrets: {
+                endpoint: '/api/secrets',
+                headers: ['Name', 'Namespace', 'Type', 'Data', 'Age', 'Actions'],
+                row: (item) => `
+                    <td class="clickable" onclick="showDetail('secrets', '${item.namespace}', '${item.name}')">${item.name}</td>
+                    <td>${item.namespace}</td>
+                    <td><span class="badge">${item.secret_type}</span></td>
+                    <td>${item.data_count}</td>
+                    <td>${item.age}</td>
+                    <td class="actions">
+                        <button class="danger" onclick="showDeleteConfirm('secrets', '${item.namespace}', '${item.name}')">Delete</button>
+                    </td>
                 `
             },
             nodes: {
                 endpoint: '/api/nodes',
-                headers: ['Name', 'Status', 'Roles', 'Age', 'Version'],
+                headers: ['Name', 'Status', 'Roles', 'Age', 'Version', 'Actions'],
                 row: (item) => `
-                    <td>${item.name}</td>
+                    <td class="clickable" onclick="showNodeDetail('${item.name}')">${item.name}</td>
                     <td><span class="status ${item.status.toLowerCase().includes('ready') ? 'ready' : 'error'}">${item.status}</span></td>
                     <td>${item.roles}</td>
                     <td>${item.age}</td>
                     <td>${item.version}</td>
+                    <td class="actions">
+                        <button onclick="cordonNode('${item.name}')">Cordon</button>
+                        <button onclick="uncordonNode('${item.name}')">Uncordon</button>
+                    </td>
                 `
             },
             namespaces: {
                 endpoint: '/api/namespaces',
-                headers: ['Name', 'Status', 'Age'],
+                headers: ['Name', 'Status', 'Age', 'Actions'],
                 row: (item) => `
-                    <td>${item.name}</td>
+                    <td class="clickable" onclick="showNamespaceDetail('${item.name}')">${item.name}</td>
                     <td><span class="status ${item.status.toLowerCase()}">${item.status}</span></td>
+                    <td>${item.age}</td>
+                    <td class="actions">
+                        <button class="danger" onclick="showDeleteConfirm('namespaces', '', '${item.name}')">Delete</button>
+                    </td>
+                `
+            },
+            events: {
+                endpoint: '/api/events',
+                headers: ['Type', 'Reason', 'Object', 'Message', 'Count', 'Age'],
+                row: (item) => `
+                    <td><span class="status ${item.event_type.toLowerCase()}">${item.event_type}</span></td>
+                    <td>${item.reason}</td>
+                    <td>${item.object_kind}/${item.object_namespace ? item.object_namespace + '/' : ''}${item.object_name}</td>
+                    <td style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.message.replace(/"/g, '&quot;')}">${item.message}</td>
+                    <td>${item.count}</td>
                     <td>${item.age}</td>
                 `
             }
         };
 
+        // Toast notifications
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        // Modal functions
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+            if (modalId === 'logs-modal' && logsWebSocket) {
+                logsWebSocket.close();
+                logsWebSocket = null;
+            }
+        }
+
+        // Load context and namespaces
         async function loadContext() {
             try {
-                const response = await fetch('/api/context');
-                const context = await response.json();
-                document.getElementById('context-badge').textContent = `Context: ${context}`;
+                const [contextRes, contextsRes] = await Promise.all([
+                    fetch('/api/context'),
+                    fetch('/api/contexts')
+                ]);
+                const currentCtx = await contextRes.json();
+                const contexts = await contextsRes.json();
+
+                const select = document.getElementById('context-select');
+                select.innerHTML = contexts.map(ctx =>
+                    `<option value="${ctx.name}" ${ctx.is_current ? 'selected' : ''}>${ctx.name}</option>`
+                ).join('');
             } catch (e) {
-                document.getElementById('context-badge').textContent = 'Context: Unknown';
+                console.error('Failed to load contexts:', e);
             }
         }
 
@@ -387,57 +1276,405 @@
                 const response = await fetch('/api/namespaces');
                 const namespaces = await response.json();
                 const select = document.getElementById('namespace-select');
-                select.innerHTML = '<option value="">All Namespaces</option>';
-                namespaces.forEach(ns => {
-                    const option = document.createElement('option');
-                    option.value = ns.name;
-                    option.textContent = ns.name;
-                    select.appendChild(option);
-                });
+                select.innerHTML = '<option value="">All Namespaces</option>' +
+                    namespaces.map(ns => `<option value="${ns.name}">${ns.name}</option>`).join('');
             } catch (e) {
                 console.error('Failed to load namespaces:', e);
             }
         }
 
+        // Load data
         async function loadData() {
+            // Special handling for pulse view
+            if (currentView === 'pulse') {
+                await loadPulseView();
+                return;
+            }
+
+            // Special handling for health view
+            if (currentView === 'health') {
+                await loadHealthView();
+                return;
+            }
+
             const view = views[currentView];
             const tableHeader = document.getElementById('table-header');
             const tableBody = document.getElementById('table-body');
 
-            // Set headers
-            tableHeader.innerHTML = `<tr>${view.headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+            // Make headers sortable (except Actions column)
+            const sort = sortState[currentView] || { column: null, direction: 'asc' };
+            tableHeader.innerHTML = `<tr>${view.headers.map((h, i) => {
+                const isActions = h === 'Actions';
+                const isSorted = sort.column === i;
+                const sortClass = isActions ? '' : `sortable ${isSorted ? sort.direction : ''}`;
+                const onClick = isActions ? '' : `onclick="sortByColumn(${i})"`;
+                return `<th class="${sortClass}" ${onClick}>${h}</th>`;
+            }).join('')}</tr>`;
             tableBody.innerHTML = '<tr><td colspan="10" class="loading">Loading...</td></tr>';
 
             try {
                 let url = view.endpoint;
+                const params = new URLSearchParams();
                 if (currentNamespace) {
-                    url += `?namespace=${currentNamespace}`;
-                } else if (currentView !== 'nodes' && currentView !== 'namespaces') {
-                    url += '?all_namespaces=true';
+                    params.set('namespace', currentNamespace);
+                } else if (!['nodes', 'namespaces'].includes(currentView)) {
+                    params.set('all_namespaces', 'true');
                 }
+                if (params.toString()) url += '?' + params.toString();
 
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('Failed to fetch data');
 
-                const data = await response.json();
+                currentData = await response.json();
 
-                if (data.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="10" class="loading">No resources found</td></tr>';
+                // Apply sorting if set
+                const sort = sortState[currentView];
+                if (sort && sort.column !== null) {
+                    sortDataByColumn(sort.column, sort.direction);
+                }
+
+                if (currentData.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="10" class="empty-state"><h3>No ${currentView} found</h3><p>Try selecting a different namespace</p></td></tr>`;
                 } else {
-                    tableBody.innerHTML = data.map(item => `<tr>${view.row(item)}</tr>`).join('');
+                    tableBody.innerHTML = currentData.map(item => `<tr>${view.row(item)}</tr>`).join('');
                 }
             } catch (e) {
                 tableBody.innerHTML = `<tr><td colspan="10" class="error-message">Error: ${e.message}</td></tr>`;
             }
         }
 
+        function filterTable() {
+            const filter = document.getElementById('search-input').value.toLowerCase();
+            const rows = document.querySelectorAll('#table-body tr');
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(filter) ? '' : 'none';
+            });
+        }
+
+        // Map column index to data property for each view
+        const columnMappings = {
+            pods: ['name', 'namespace', 'status', 'ready', 'restarts', 'age'],
+            deployments: ['name', 'namespace', 'ready', 'up_to_date', 'available', 'age'],
+            statefulsets: ['name', 'namespace', 'ready', 'age'],
+            daemonsets: ['name', 'namespace', 'desired', 'current', 'ready', 'age'],
+            replicasets: ['name', 'namespace', 'desired', 'current', 'ready', 'age'],
+            services: ['name', 'namespace', 'service_type', 'cluster_ip', 'external_ip', 'ports', 'age'],
+            configmaps: ['name', 'namespace', 'data_count', 'age'],
+            secrets: ['name', 'namespace', 'secret_type', 'data_count', 'age'],
+            nodes: ['name', 'status', 'roles', 'age', 'version'],
+            namespaces: ['name', 'status', 'age'],
+            events: ['event_type', 'reason', 'object_kind', 'message', 'count', 'age']
+        };
+
+        function sortByColumn(columnIndex) {
+            const currentSort = sortState[currentView] || { column: null, direction: 'asc' };
+
+            // Toggle direction if same column, otherwise reset to asc
+            let newDirection = 'asc';
+            if (currentSort.column === columnIndex) {
+                newDirection = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            }
+
+            sortState[currentView] = { column: columnIndex, direction: newDirection };
+
+            // Re-sort and re-render
+            sortDataByColumn(columnIndex, newDirection);
+            renderCurrentData();
+        }
+
+        function sortDataByColumn(columnIndex, direction) {
+            const mapping = columnMappings[currentView];
+            if (!mapping || columnIndex >= mapping.length) return;
+
+            const property = mapping[columnIndex];
+            const multiplier = direction === 'asc' ? 1 : -1;
+
+            currentData.sort((a, b) => {
+                let valA = a[property];
+                let valB = b[property];
+
+                // Handle age sorting (convert to comparable format)
+                if (property === 'age') {
+                    valA = parseAge(valA);
+                    valB = parseAge(valB);
+                }
+                // Handle numeric fields
+                else if (typeof valA === 'number' && typeof valB === 'number') {
+                    return (valA - valB) * multiplier;
+                }
+                // Handle string comparison
+                else {
+                    valA = String(valA || '').toLowerCase();
+                    valB = String(valB || '').toLowerCase();
+                }
+
+                if (valA < valB) return -1 * multiplier;
+                if (valA > valB) return 1 * multiplier;
+                return 0;
+            });
+        }
+
+        function parseAge(ageStr) {
+            if (!ageStr || ageStr === '-') return 0;
+            const matches = ageStr.match(/(\d+)([smhd])/);
+            if (!matches) return 0;
+            const value = parseInt(matches[1]);
+            const unit = matches[2];
+            switch (unit) {
+                case 's': return value;
+                case 'm': return value * 60;
+                case 'h': return value * 3600;
+                case 'd': return value * 86400;
+                default: return value;
+            }
+        }
+
+        function renderCurrentData() {
+            const view = views[currentView];
+            const tableHeader = document.getElementById('table-header');
+            const tableBody = document.getElementById('table-body');
+
+            // Update header sort indicators
+            const sort = sortState[currentView] || { column: null, direction: 'asc' };
+            tableHeader.innerHTML = `<tr>${view.headers.map((h, i) => {
+                const isActions = h === 'Actions';
+                const isSorted = sort.column === i;
+                const sortClass = isActions ? '' : `sortable ${isSorted ? sort.direction : ''}`;
+                const onClick = isActions ? '' : `onclick="sortByColumn(${i})"`;
+                return `<th class="${sortClass}" ${onClick}>${h}</th>`;
+            }).join('')}</tr>`;
+
+            // Render rows
+            tableBody.innerHTML = currentData.map(item => `<tr>${view.row(item)}</tr>`).join('');
+            selectedRowIndex = -1;
+        }
+
+        // Load Pulse View (cluster overview dashboard)
+        async function loadPulseView() {
+            const content = document.querySelector('.content');
+            content.innerHTML = `
+                <div class="toolbar">
+                    <h2>Cluster Pulse</h2>
+                    <div class="toolbar-actions">
+                        <button onclick="refreshData()">Refresh</button>
+                    </div>
+                </div>
+                <div id="pulse-content" class="loading">Loading cluster overview...</div>
+            `;
+
+            try {
+                const response = await fetch('/api/pulse');
+                if (!response.ok) throw new Error('Failed to fetch cluster pulse');
+                const data = await response.json();
+
+                const pulseContent = document.getElementById('pulse-content');
+                const rc = data.resource_counts;
+                const ps = data.pod_status_breakdown;
+
+                // Calculate percentages for pod status bar
+                const total = ps.total || 1;
+                const runningPct = (ps.running / total * 100).toFixed(1);
+                const pendingPct = (ps.pending / total * 100).toFixed(1);
+                const succeededPct = (ps.succeeded / total * 100).toFixed(1);
+                const failedPct = (ps.failed / total * 100).toFixed(1);
+                const unknownPct = (ps.unknown / total * 100).toFixed(1);
+
+                pulseContent.className = '';
+                pulseContent.innerHTML = `
+                    <div class="pulse-dashboard">
+                        <div class="pulse-card">
+                            <h4>Context</h4>
+                            <div class="value" style="font-size: 1rem; word-break: break-all;">${data.context}</div>
+                        </div>
+                        <div class="pulse-card">
+                            <h4>Pods</h4>
+                            <div class="value">${rc.pods}</div>
+                            <div class="subtitle">${ps.running} running</div>
+                        </div>
+                        <div class="pulse-card">
+                            <h4>Deployments</h4>
+                            <div class="value">${rc.deployments}</div>
+                        </div>
+                        <div class="pulse-card">
+                            <h4>Services</h4>
+                            <div class="value">${rc.services}</div>
+                        </div>
+                        <div class="pulse-card">
+                            <h4>Nodes</h4>
+                            <div class="value">${rc.nodes}</div>
+                            <div class="subtitle">${data.node_status.filter(n => n.status === 'Ready').length} ready</div>
+                        </div>
+                        <div class="pulse-card">
+                            <h4>Namespaces</h4>
+                            <div class="value">${rc.namespaces}</div>
+                        </div>
+                    </div>
+
+                    <div class="pulse-section">
+                        <h3>Pod Status</h3>
+                        <div class="status-bar-container">
+                            ${ps.running > 0 ? `<div class="status-bar-segment running" style="width: ${runningPct}%">${ps.running}</div>` : ''}
+                            ${ps.pending > 0 ? `<div class="status-bar-segment pending" style="width: ${pendingPct}%">${ps.pending}</div>` : ''}
+                            ${ps.succeeded > 0 ? `<div class="status-bar-segment succeeded" style="width: ${succeededPct}%">${ps.succeeded}</div>` : ''}
+                            ${ps.failed > 0 ? `<div class="status-bar-segment failed" style="width: ${failedPct}%">${ps.failed}</div>` : ''}
+                            ${ps.unknown > 0 ? `<div class="status-bar-segment unknown" style="width: ${unknownPct}%">${ps.unknown}</div>` : ''}
+                        </div>
+                        <div class="status-legend">
+                            <div class="status-legend-item"><div class="status-legend-dot" style="background: var(--success)"></div> Running: ${ps.running}</div>
+                            <div class="status-legend-item"><div class="status-legend-dot" style="background: var(--warning)"></div> Pending: ${ps.pending}</div>
+                            <div class="status-legend-item"><div class="status-legend-dot" style="background: var(--accent)"></div> Succeeded: ${ps.succeeded}</div>
+                            <div class="status-legend-item"><div class="status-legend-dot" style="background: var(--error)"></div> Failed: ${ps.failed}</div>
+                            <div class="status-legend-item"><div class="status-legend-dot" style="background: var(--text-secondary)"></div> Unknown: ${ps.unknown}</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="pulse-section">
+                            <h3>Nodes</h3>
+                            <div class="node-grid">
+                                ${data.node_status.map(node => `
+                                    <div class="node-card ${node.status !== 'Ready' ? 'not-ready' : ''}">
+                                        <div class="node-name">${node.name}</div>
+                                        <div class="node-info">
+                                            <span class="status ${node.status.toLowerCase()}">${node.status}</span>
+                                            <br>CPU: ${node.cpu_capacity} | Mem: ${node.memory_capacity}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <div class="pulse-section">
+                            <h3>Recent Events</h3>
+                            <div class="events-mini-list">
+                                ${data.recent_events.length === 0 ? '<div style="color: var(--text-secondary); padding: 1rem;">No recent events</div>' :
+                                data.recent_events.map(event => `
+                                    <div class="event-mini-item">
+                                        <span class="event-type-badge ${event.event_type.toLowerCase()}">${event.event_type}</span>
+                                        <div class="event-content">
+                                            <div class="event-reason">${event.reason}</div>
+                                            <div class="event-message" title="${event.message.replace(/"/g, '&quot;')}">${event.object_kind}/${event.object_name}: ${event.message}</div>
+                                        </div>
+                                        <span class="event-age">${event.age}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pulse-dashboard" style="margin-top: 1rem;">
+                        <div class="pulse-card">
+                            <h4>StatefulSets</h4>
+                            <div class="value">${rc.statefulsets}</div>
+                        </div>
+                        <div class="pulse-card">
+                            <h4>DaemonSets</h4>
+                            <div class="value">${rc.daemonsets}</div>
+                        </div>
+                        <div class="pulse-card">
+                            <h4>ConfigMaps</h4>
+                            <div class="value">${rc.configmaps}</div>
+                        </div>
+                        <div class="pulse-card">
+                            <h4>Secrets</h4>
+                            <div class="value">${rc.secrets}</div>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                document.getElementById('pulse-content').innerHTML = `<div class="error-message">Error: ${e.message}</div>`;
+            }
+        }
+
+        // Load Health View (cluster health scanner)
+        async function loadHealthView() {
+            const content = document.querySelector('.content');
+            content.innerHTML = `
+                <div class="toolbar">
+                    <h2>Cluster Health Scanner</h2>
+                    <div class="toolbar-actions">
+                        <button onclick="refreshData()">Scan Again</button>
+                    </div>
+                </div>
+                <div id="health-content" class="loading">Scanning cluster for issues...</div>
+            `;
+
+            try {
+                const response = await fetch('/api/health/scan');
+                if (!response.ok) throw new Error('Failed to scan cluster health');
+                const data = await response.json();
+
+                const healthContent = document.getElementById('health-content');
+                healthContent.className = '';
+
+                healthContent.innerHTML = `
+                    <div class="health-summary">
+                        <div class="health-summary-card critical">
+                            <div class="count">${data.summary.critical}</div>
+                            <div class="label">Critical</div>
+                        </div>
+                        <div class="health-summary-card warning">
+                            <div class="count">${data.summary.warning}</div>
+                            <div class="label">Warning</div>
+                        </div>
+                        <div class="health-summary-card info">
+                            <div class="count">${data.summary.info}</div>
+                            <div class="label">Info</div>
+                        </div>
+                    </div>
+
+                    ${data.issues.length === 0
+                        ? '<div style="text-align: center; padding: 2rem; color: var(--success);"><h3>All checks passed!</h3><p>No issues found in your cluster.</p></div>'
+                        : `<div class="pulse-section" style="padding: 0;">
+                            ${data.issues.map(issue => `
+                                <div class="health-issue">
+                                    <span class="health-severity ${issue.severity}">${issue.severity}</span>
+                                    <div class="health-content">
+                                        <div class="health-resource">
+                                            <span class="health-resource-type">${issue.resource_type}</span>
+                                            ${issue.resource_name}
+                                            ${issue.namespace ? `<span style="color: var(--text-secondary);">(${issue.namespace})</span>` : ''}
+                                        </div>
+                                        <div class="health-issue-text">${issue.issue}</div>
+                                        <div class="health-recommendation">${issue.recommendation}</div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>`
+                    }
+                `;
+            } catch (e) {
+                document.getElementById('health-content').innerHTML = `<div class="error-message">Error: ${e.message}</div>`;
+            }
+        }
+
         function switchView(view) {
             currentView = view;
-            document.getElementById('section-title').textContent = view.charAt(0).toUpperCase() + view.slice(1);
+            selectedRowIndex = -1;  // Reset selection
 
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.classList.toggle('active', item.dataset.view === view);
             });
+
+            // Restore table structure if switching away from special views
+            if (view !== 'pulse' && view !== 'health') {
+                const content = document.querySelector('.content');
+                content.innerHTML = `
+                    <div class="toolbar">
+                        <h2 id="section-title">${view.charAt(0).toUpperCase() + view.slice(1)}</h2>
+                        <div class="toolbar-actions">
+                            <input type="text" id="search-input" placeholder="Filter..." oninput="filterTable()">
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table id="data-table">
+                            <thead id="table-header"></thead>
+                            <tbody id="table-body"></tbody>
+                        </table>
+                    </div>
+                `;
+            }
 
             loadData();
         }
@@ -446,28 +1683,456 @@
             loadData();
         }
 
+        // Logs
         async function showLogs(namespace, name) {
             const modal = document.getElementById('logs-modal');
             const title = document.getElementById('logs-title');
             const content = document.getElementById('logs-content');
+            const status = document.getElementById('logs-status');
+            const filterInput = document.getElementById('logs-filter');
+            const followCheckbox = document.getElementById('logs-follow');
+            const tailSelect = document.getElementById('logs-tail');
+
+            currentLogsNamespace = namespace;
+            currentLogsName = name;
+            allLogs = '';
+            filterInput.value = '';
+            followCheckbox.checked = false;
 
             title.textContent = `Logs: ${namespace}/${name}`;
             content.textContent = 'Loading logs...';
+            status.textContent = '';
+            modal.classList.add('active');
+
+            // Load initial logs
+            await fetchLogs();
+
+            // Add event listeners
+            filterInput.oninput = applyLogsFilter;
+            tailSelect.onchange = fetchLogs;
+            followCheckbox.onchange = toggleLogsFollow;
+        }
+
+        async function fetchLogs() {
+            const content = document.getElementById('logs-content');
+            const status = document.getElementById('logs-status');
+            const tail = document.getElementById('logs-tail').value;
+
+            try {
+                content.textContent = 'Loading logs...';
+                const response = await fetch(`/api/pods/${currentLogsNamespace}/${currentLogsName}/logs?tail=${tail}`);
+                if (!response.ok) throw new Error('Failed to fetch logs');
+                allLogs = await response.text() || 'No logs available';
+                applyLogsFilter();
+                status.textContent = `Loaded ${allLogs.split('\n').filter(l => l).length} lines`;
+            } catch (e) {
+                content.textContent = `Error: ${e.message}`;
+                status.textContent = 'Error loading logs';
+            }
+        }
+
+        function applyLogsFilter() {
+            const content = document.getElementById('logs-content');
+            const filterInput = document.getElementById('logs-filter');
+            const filterValue = filterInput.value.trim();
+
+            if (!filterValue) {
+                content.textContent = allLogs;
+            } else {
+                try {
+                    const regex = new RegExp(filterValue, 'i');
+                    const filtered = allLogs.split('\n').filter(line => regex.test(line)).join('\n');
+                    content.textContent = filtered || 'No matching lines';
+                } catch (e) {
+                    // Invalid regex, treat as plain text
+                    const filtered = allLogs.split('\n').filter(line =>
+                        line.toLowerCase().includes(filterValue.toLowerCase())
+                    ).join('\n');
+                    content.textContent = filtered || 'No matching lines';
+                }
+            }
+            // Auto-scroll to bottom
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function toggleLogsFollow() {
+            const followCheckbox = document.getElementById('logs-follow');
+            const status = document.getElementById('logs-status');
+
+            if (followCheckbox.checked) {
+                // Start WebSocket streaming
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const tail = document.getElementById('logs-tail').value;
+                const wsUrl = `${protocol}//${window.location.host}/api/ws/logs/${currentLogsNamespace}/${currentLogsName}?tail=${tail}`;
+
+                logsWebSocket = new WebSocket(wsUrl);
+
+                logsWebSocket.onopen = () => {
+                    status.textContent = 'Connected - streaming logs...';
+                    status.style.color = 'var(--success)';
+                };
+
+                logsWebSocket.onmessage = (event) => {
+                    allLogs += event.data + '\n';
+                    applyLogsFilter();
+                };
+
+                logsWebSocket.onerror = () => {
+                    status.textContent = 'WebSocket error';
+                    status.style.color = 'var(--error)';
+                    followCheckbox.checked = false;
+                };
+
+                logsWebSocket.onclose = () => {
+                    if (followCheckbox.checked) {
+                        status.textContent = 'Disconnected';
+                        status.style.color = 'var(--text-secondary)';
+                    }
+                };
+            } else {
+                // Stop streaming
+                if (logsWebSocket) {
+                    logsWebSocket.close();
+                    logsWebSocket = null;
+                }
+                status.textContent = 'Streaming stopped';
+                status.style.color = 'var(--text-secondary)';
+            }
+        }
+
+        function downloadLogs() {
+            const filterInput = document.getElementById('logs-filter');
+            const content = document.getElementById('logs-content');
+            const logsToDownload = filterInput.value ? content.textContent : allLogs;
+
+            const blob = new Blob([logsToDownload], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentLogsName}-logs.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Logs downloaded');
+        }
+
+        // Detail view
+        async function showDetail(type, namespace, name) {
+            const modal = document.getElementById('detail-modal');
+            const title = document.getElementById('detail-title');
+            const content = document.getElementById('detail-content');
+            const status = document.getElementById('detail-status');
+
+            title.textContent = `${type}/${namespace}/${name}`;
+            content.textContent = 'Loading...';
+            status.textContent = '';
+            resetDetailView();
             modal.classList.add('active');
 
             try {
-                const response = await fetch(`/api/pods/${namespace}/${name}/logs?tail=100`);
-                if (!response.ok) throw new Error('Failed to fetch logs');
-
-                const logs = await response.text();
-                content.textContent = logs || 'No logs available';
+                const response = await fetch(`/api/${type}/${namespace}/${name}`);
+                if (!response.ok) throw new Error('Failed to fetch details');
+                currentDetailData = await response.json();
+                renderDetailContent();
             } catch (e) {
                 content.textContent = `Error: ${e.message}`;
             }
         }
 
-        function closeLogsModal() {
-            document.getElementById('logs-modal').classList.remove('active');
+        async function showNodeDetail(name) {
+            const modal = document.getElementById('detail-modal');
+            const title = document.getElementById('detail-title');
+            const content = document.getElementById('detail-content');
+            const status = document.getElementById('detail-status');
+
+            title.textContent = `node/${name}`;
+            content.textContent = 'Loading...';
+            status.textContent = '';
+            resetDetailView();
+            modal.classList.add('active');
+
+            try {
+                const response = await fetch(`/api/nodes/${name}`);
+                if (!response.ok) throw new Error('Failed to fetch details');
+                currentDetailData = await response.json();
+                renderDetailContent();
+            } catch (e) {
+                content.textContent = `Error: ${e.message}`;
+            }
+        }
+
+        async function showNamespaceDetail(name) {
+            const modal = document.getElementById('detail-modal');
+            const title = document.getElementById('detail-title');
+            const content = document.getElementById('detail-content');
+            const status = document.getElementById('detail-status');
+
+            title.textContent = `namespace/${name}`;
+            content.textContent = 'Loading...';
+            status.textContent = '';
+            resetDetailView();
+            modal.classList.add('active');
+
+            try {
+                const response = await fetch(`/api/namespaces/${name}`);
+                if (!response.ok) throw new Error('Failed to fetch details');
+                currentDetailData = await response.json();
+                renderDetailContent();
+            } catch (e) {
+                content.textContent = `Error: ${e.message}`;
+            }
+        }
+
+        function resetDetailView() {
+            currentDetailFormat = 'json';
+            document.getElementById('detail-view-container').style.display = 'block';
+            document.getElementById('detail-edit-container').style.display = 'none';
+            document.getElementById('detail-cancel-edit').style.display = 'none';
+            document.getElementById('detail-save-btn').style.display = 'none';
+            document.getElementById('detail-close-btn').style.display = 'block';
+            document.getElementById('detail-edit-btn').style.display = 'block';
+            document.getElementById('detail-format-json').classList.add('primary');
+            document.getElementById('detail-format-yaml').classList.remove('primary');
+        }
+
+        function renderDetailContent() {
+            const content = document.getElementById('detail-content');
+            if (currentDetailFormat === 'json') {
+                content.textContent = JSON.stringify(currentDetailData, null, 2);
+            } else {
+                // Convert to YAML-like format (simple implementation)
+                content.textContent = jsonToYaml(currentDetailData);
+            }
+        }
+
+        function setDetailFormat(format) {
+            currentDetailFormat = format;
+            document.getElementById('detail-format-json').classList.toggle('primary', format === 'json');
+            document.getElementById('detail-format-yaml').classList.toggle('primary', format === 'yaml');
+            renderDetailContent();
+        }
+
+        function jsonToYaml(obj, indent = 0) {
+            const spaces = '  '.repeat(indent);
+            let result = '';
+
+            if (Array.isArray(obj)) {
+                for (const item of obj) {
+                    if (typeof item === 'object' && item !== null) {
+                        result += `${spaces}-\n${jsonToYaml(item, indent + 1)}`;
+                    } else {
+                        result += `${spaces}- ${item}\n`;
+                    }
+                }
+            } else if (typeof obj === 'object' && obj !== null) {
+                for (const [key, value] of Object.entries(obj)) {
+                    if (typeof value === 'object' && value !== null) {
+                        if (Array.isArray(value) && value.length === 0) {
+                            result += `${spaces}${key}: []\n`;
+                        } else if (!Array.isArray(value) && Object.keys(value).length === 0) {
+                            result += `${spaces}${key}: {}\n`;
+                        } else {
+                            result += `${spaces}${key}:\n${jsonToYaml(value, indent + 1)}`;
+                        }
+                    } else if (typeof value === 'string' && (value.includes('\n') || value.includes(':'))) {
+                        result += `${spaces}${key}: |\n${value.split('\n').map(l => '  '.repeat(indent + 1) + l).join('\n')}\n`;
+                    } else {
+                        result += `${spaces}${key}: ${value}\n`;
+                    }
+                }
+            }
+            return result;
+        }
+
+        function enterEditMode() {
+            document.getElementById('detail-view-container').style.display = 'none';
+            document.getElementById('detail-edit-container').style.display = 'block';
+            document.getElementById('detail-cancel-edit').style.display = 'inline-block';
+            document.getElementById('detail-save-btn').style.display = 'inline-block';
+            document.getElementById('detail-close-btn').style.display = 'none';
+
+            // Use YAML format for editing (cleaner for k8s resources)
+            const editor = document.getElementById('detail-editor');
+            editor.value = jsonToYaml(currentDetailData);
+        }
+
+        function cancelEditMode() {
+            resetDetailView();
+            renderDetailContent();
+        }
+
+        async function saveResourceEdit() {
+            const editor = document.getElementById('detail-editor');
+            const status = document.getElementById('detail-status');
+            const yaml = editor.value;
+
+            status.textContent = 'Saving...';
+            status.style.color = 'var(--text-secondary)';
+
+            try {
+                const response = await fetch('/api/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: yaml
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to apply');
+                }
+
+                const result = await response.json();
+                status.textContent = result.message;
+                status.style.color = 'var(--success)';
+                showToast(result.message);
+
+                // Refresh the data
+                setTimeout(() => {
+                    closeModal('detail-modal');
+                    loadData();
+                }, 1000);
+            } catch (e) {
+                status.textContent = `Error: ${e.message}`;
+                status.style.color = 'var(--error)';
+            }
+        }
+
+        // Scale
+        function showScaleModal(type, namespace, name, currentReplicas) {
+            pendingScale = { type, namespace, name };
+            document.getElementById('scale-title').textContent = `Scale ${name}`;
+            document.getElementById('scale-replicas').value = currentReplicas;
+            document.getElementById('scale-modal').classList.add('active');
+        }
+
+        async function confirmScale() {
+            if (!pendingScale) return;
+
+            const replicas = parseInt(document.getElementById('scale-replicas').value);
+            const { type, namespace, name } = pendingScale;
+
+            try {
+                const response = await fetch(`/api/${type}/${namespace}/${name}/scale`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ replicas })
+                });
+
+                if (!response.ok) throw new Error('Failed to scale');
+                const result = await response.json();
+                showToast(result.message);
+                closeModal('scale-modal');
+                loadData();
+            } catch (e) {
+                showToast(`Error: ${e.message}`, 'error');
+            }
+
+            pendingScale = null;
+        }
+
+        // Restart
+        async function restartResource(type, namespace, name) {
+            try {
+                const response = await fetch(`/api/${type}/${namespace}/${name}/restart`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to restart');
+                const result = await response.json();
+                showToast(result.message);
+                loadData();
+            } catch (e) {
+                showToast(`Error: ${e.message}`, 'error');
+            }
+        }
+
+        // Delete
+        function showDeleteConfirm(type, namespace, name) {
+            pendingDelete = { type, namespace, name };
+            const resourceName = namespace ? `${namespace}/${name}` : name;
+            document.getElementById('delete-message').textContent =
+                `Are you sure you want to delete ${type} "${resourceName}"? This action cannot be undone.`;
+            document.getElementById('delete-modal').classList.add('active');
+        }
+
+        async function confirmDelete() {
+            if (!pendingDelete) return;
+
+            const { type, namespace, name } = pendingDelete;
+            const url = namespace ? `/api/${type}/${namespace}/${name}` : `/api/${type}/${name}`;
+
+            try {
+                const response = await fetch(url, { method: 'DELETE' });
+                if (!response.ok) throw new Error('Failed to delete');
+                const result = await response.json();
+                showToast(result.message);
+                closeModal('delete-modal');
+                loadData();
+            } catch (e) {
+                showToast(`Error: ${e.message}`, 'error');
+            }
+
+            pendingDelete = null;
+        }
+
+        // Node operations
+        async function cordonNode(name) {
+            try {
+                const response = await fetch(`/api/nodes/${name}/cordon`, { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to cordon node');
+                const result = await response.json();
+                showToast(result.message);
+                loadData();
+            } catch (e) {
+                showToast(`Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function uncordonNode(name) {
+            try {
+                const response = await fetch(`/api/nodes/${name}/uncordon`, { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to uncordon node');
+                const result = await response.json();
+                showToast(result.message);
+                loadData();
+            } catch (e) {
+                showToast(`Error: ${e.message}`, 'error');
+            }
+        }
+
+        // Apply YAML
+        function showApplyModal() {
+            document.getElementById('apply-yaml').value = '';
+            document.getElementById('apply-modal').classList.add('active');
+        }
+
+        async function applyYaml() {
+            const yaml = document.getElementById('apply-yaml').value.trim();
+            if (!yaml) {
+                showToast('Please enter YAML content', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: yaml
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to apply');
+                }
+
+                const result = await response.json();
+                showToast(result.message);
+                closeModal('apply-modal');
+                loadData();
+            } catch (e) {
+                showToast(`Error: ${e.message}`, 'error');
+            }
         }
 
         // Event listeners
@@ -480,9 +2145,268 @@
             loadData();
         });
 
+        // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closeLogsModal();
+            // Ctrl+K / Cmd+K for global search (works even in inputs)
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                openGlobalSearch();
+                return;
+            }
+
+            // Ignore other shortcuts if typing in input/textarea
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                if (e.key === 'Escape') {
+                    e.target.blur();
+                }
+                return;
+            }
+
+            // Check for modals
+            const hasActiveModal = document.querySelector('.modal.active');
+
+            // Close modals on Escape
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal.active').forEach(m => closeModal(m.id));
+                return;
+            }
+
+            // Don't process other shortcuts if modal is open
+            if (hasActiveModal) return;
+
+            // View switching (0-9)
+            if (viewShortcuts[e.key]) {
+                switchView(viewShortcuts[e.key]);
+                return;
+            }
+
+            switch (e.key) {
+                case '?':
+                    document.getElementById('shortcuts-modal').classList.add('active');
+                    break;
+                case '/':
+                    e.preventDefault();
+                    const searchInput = document.getElementById('search-input');
+                    if (searchInput) searchInput.focus();
+                    break;
+                case 'r':
+                    refreshData();
+                    break;
+                case 'a':
+                    showApplyModal();
+                    break;
+                case 'j': // Navigate down
+                    navigateRow(1);
+                    break;
+                case 'k': // Navigate up
+                    navigateRow(-1);
+                    break;
+                case 'Enter':
+                    openSelectedDetail();
+                    break;
+                case 'l':
+                    if (currentView === 'pods') openSelectedLogs();
+                    break;
+                case 's':
+                    if (['deployments', 'statefulsets'].includes(currentView)) openSelectedScale();
+                    break;
+                case 'd':
+                    deleteSelected();
+                    break;
+            }
         });
+
+        function navigateRow(direction) {
+            if (currentView === 'pulse') return;
+            const rows = document.querySelectorAll('#table-body tr:not([style*="display: none"])');
+            if (rows.length === 0) return;
+
+            // Remove previous selection
+            rows.forEach(r => r.classList.remove('selected'));
+
+            // Calculate new index
+            if (selectedRowIndex < 0) {
+                selectedRowIndex = direction > 0 ? 0 : rows.length - 1;
+            } else {
+                selectedRowIndex += direction;
+                if (selectedRowIndex < 0) selectedRowIndex = rows.length - 1;
+                if (selectedRowIndex >= rows.length) selectedRowIndex = 0;
+            }
+
+            // Apply selection
+            const selectedRow = rows[selectedRowIndex];
+            if (selectedRow) {
+                selectedRow.classList.add('selected');
+                selectedRow.scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        function getSelectedData() {
+            if (selectedRowIndex < 0 || selectedRowIndex >= currentData.length) return null;
+            return currentData[selectedRowIndex];
+        }
+
+        function openSelectedDetail() {
+            const data = getSelectedData();
+            if (!data) return;
+
+            if (currentView === 'nodes') {
+                showNodeDetail(data.name);
+            } else if (currentView === 'namespaces') {
+                showNamespaceDetail(data.name);
+            } else if (data.namespace && data.name) {
+                showDetail(currentView, data.namespace, data.name);
+            }
+        }
+
+        function openSelectedLogs() {
+            const data = getSelectedData();
+            if (data && data.namespace && data.name) {
+                showLogs(data.namespace, data.name);
+            }
+        }
+
+        function openSelectedScale() {
+            const data = getSelectedData();
+            if (data && data.namespace && data.name) {
+                showScaleModal(currentView, data.namespace, data.name, data.replicas || 1);
+            }
+        }
+
+        function deleteSelected() {
+            const data = getSelectedData();
+            if (!data) return;
+
+            if (currentView === 'namespaces') {
+                showDeleteConfirm('namespaces', '', data.name);
+            } else if (data.namespace && data.name) {
+                showDeleteConfirm(currentView, data.namespace, data.name);
+            }
+        }
+
+        // Global Search (Command Palette)
+        let searchResults = [];
+        let searchSelectedIndex = -1;
+        let searchDebounceTimer = null;
+
+        function openGlobalSearch() {
+            const modal = document.getElementById('search-modal');
+            const input = document.getElementById('global-search-input');
+            const results = document.getElementById('search-results');
+
+            input.value = '';
+            results.innerHTML = '<div style="padding: 1rem; color: var(--text-secondary); text-align: center;">Type to search across all resources</div>';
+            searchResults = [];
+            searchSelectedIndex = -1;
+
+            modal.classList.add('active');
+            setTimeout(() => input.focus(), 50);
+        }
+
+        function performGlobalSearch() {
+            const input = document.getElementById('global-search-input');
+            const results = document.getElementById('search-results');
+            const query = input.value.trim();
+
+            if (query.length < 2) {
+                results.innerHTML = '<div style="padding: 1rem; color: var(--text-secondary); text-align: center;">Type at least 2 characters to search</div>';
+                searchResults = [];
+                return;
+            }
+
+            // Debounce
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(async () => {
+                results.innerHTML = '<div style="padding: 1rem; color: var(--text-secondary); text-align: center;">Searching...</div>';
+
+                try {
+                    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                    if (!response.ok) throw new Error('Search failed');
+
+                    searchResults = await response.json();
+                    searchSelectedIndex = -1;
+
+                    if (searchResults.length === 0) {
+                        results.innerHTML = '<div style="padding: 1rem; color: var(--text-secondary); text-align: center;">No results found</div>';
+                    } else {
+                        results.innerHTML = searchResults.map((r, i) => `
+                            <div class="search-result-item" onclick="selectSearchResult(${i})" data-index="${i}">
+                                <span class="search-result-type">${r.resource_type}</span>
+                                <span class="search-result-name">${r.name}</span>
+                                ${r.namespace ? `<span class="search-result-ns">in ${r.namespace}</span>` : ''}
+                            </div>
+                        `).join('');
+                    }
+                } catch (e) {
+                    results.innerHTML = `<div style="padding: 1rem; color: var(--error);">Error: ${e.message}</div>`;
+                }
+            }, 200);
+        }
+
+        function handleSearchKeydown(e) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                navigateSearchResults(1);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                navigateSearchResults(-1);
+            } else if (e.key === 'Enter' && searchSelectedIndex >= 0) {
+                e.preventDefault();
+                selectSearchResult(searchSelectedIndex);
+            } else if (e.key === 'Escape') {
+                closeModal('search-modal');
+            }
+        }
+
+        function navigateSearchResults(direction) {
+            if (searchResults.length === 0) return;
+
+            const items = document.querySelectorAll('.search-result-item');
+            items.forEach(item => item.classList.remove('selected'));
+
+            searchSelectedIndex += direction;
+            if (searchSelectedIndex < 0) searchSelectedIndex = searchResults.length - 1;
+            if (searchSelectedIndex >= searchResults.length) searchSelectedIndex = 0;
+
+            const selected = items[searchSelectedIndex];
+            if (selected) {
+                selected.classList.add('selected');
+                selected.scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        function selectSearchResult(index) {
+            const result = searchResults[index];
+            if (!result) return;
+
+            closeModal('search-modal');
+
+            // Map resource types to views
+            const typeToView = {
+                'Pod': 'pods',
+                'Deployment': 'deployments',
+                'Service': 'services',
+                'ConfigMap': 'configmaps',
+                'Secret': 'secrets',
+                'Node': 'nodes',
+                'Namespace': 'namespaces'
+            };
+
+            const view = typeToView[result.resource_type];
+            if (view) {
+                switchView(view);
+                // Open detail after a short delay to let the view load
+                setTimeout(() => {
+                    if (result.resource_type === 'Node') {
+                        showNodeDetail(result.name);
+                    } else if (result.resource_type === 'Namespace') {
+                        showNamespaceDetail(result.name);
+                    } else if (result.namespace) {
+                        showDetail(view, result.namespace, result.name);
+                    }
+                }, 300);
+            }
+        }
 
         // Initial load
         loadContext();
