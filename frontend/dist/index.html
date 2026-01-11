@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>kc Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --accent: #e94560;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --error: #ef4444;
+            --border: #333;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header h1 span {
+            color: var(--accent);
+        }
+
+        .context-info {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .context-badge {
+            background: var(--bg-card);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+
+        .main {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            min-height: calc(100vh - 60px);
+        }
+
+        .sidebar {
+            background: var(--bg-secondary);
+            padding: 1rem;
+            border-right: 1px solid var(--border);
+        }
+
+        .nav-item {
+            padding: 0.75rem 1rem;
+            margin: 0.25rem 0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: var(--bg-card);
+        }
+
+        .nav-item.active {
+            border-left: 3px solid var(--accent);
+        }
+
+        .content {
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .section-header h2 {
+            font-size: 1.25rem;
+        }
+
+        .refresh-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background: var(--accent);
+        }
+
+        .table-container {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--bg-card);
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        tr:hover {
+            background: rgba(233, 69, 96, 0.1);
+        }
+
+        .status {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status.running, .status.active, .status.ready {
+            background: rgba(74, 222, 128, 0.2);
+            color: var(--success);
+        }
+
+        .status.pending, .status.terminating {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--warning);
+        }
+
+        .status.failed, .status.error, .status.crashloopbackoff {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--error);
+        }
+
+        .clickable {
+            cursor: pointer;
+            color: var(--accent);
+        }
+
+        .clickable:hover {
+            text-decoration: underline;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-secondary);
+            width: 80%;
+            max-width: 1000px;
+            max-height: 80vh;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .logs-container {
+            padding: 1rem;
+            height: 60vh;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            background: #000;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--error);
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+
+        .namespace-select {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-right: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1><span>kc</span> Dashboard</h1>
+        <div class="context-info">
+            <select id="namespace-select" class="namespace-select">
+                <option value="">All Namespaces</option>
+            </select>
+            <div class="context-badge" id="context-badge">Loading...</div>
+        </div>
+    </header>
+
+    <main class="main">
+        <nav class="sidebar">
+            <div class="nav-item active" data-view="pods">Pods</div>
+            <div class="nav-item" data-view="deployments">Deployments</div>
+            <div class="nav-item" data-view="services">Services</div>
+            <div class="nav-item" data-view="nodes">Nodes</div>
+            <div class="nav-item" data-view="namespaces">Namespaces</div>
+        </nav>
+
+        <div class="content">
+            <div class="section-header">
+                <h2 id="section-title">Pods</h2>
+                <button class="refresh-btn" onclick="refreshData()">Refresh</button>
+            </div>
+
+            <div class="table-container">
+                <table id="data-table">
+                    <thead id="table-header"></thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Logs Modal -->
+    <div class="modal" id="logs-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="logs-title">Logs</h3>
+                <button class="modal-close" onclick="closeLogsModal()">&times;</button>
+            </div>
+            <div class="logs-container" id="logs-content">Loading logs...</div>
+        </div>
+    </div>
+
+    <script>
+        let currentView = 'pods';
+        let currentNamespace = '';
+
+        const views = {
+            pods: {
+                endpoint: '/api/pods',
+                headers: ['Name', 'Namespace', 'Status', 'Ready', 'Restarts', 'Age', 'Actions'],
+                row: (item) => `
+                    <td class="clickable" onclick="showLogs('${item.namespace}', '${item.name}')">${item.name}</td>
+                    <td>${item.namespace}</td>
+                    <td><span class="status ${item.status.toLowerCase()}">${item.status}</span></td>
+                    <td>${item.ready}</td>
+                    <td>${item.restarts}</td>
+                    <td>${item.age}</td>
+                    <td><button onclick="showLogs('${item.namespace}', '${item.name}')" class="refresh-btn">Logs</button></td>
+                `
+            },
+            deployments: {
+                endpoint: '/api/deployments',
+                headers: ['Name', 'Namespace', 'Ready', 'Up-to-date', 'Available', 'Age'],
+                row: (item) => `
+                    <td>${item.name}</td>
+                    <td>${item.namespace}</td>
+                    <td>${item.ready}</td>
+                    <td>${item.up_to_date}</td>
+                    <td>${item.available}</td>
+                    <td>${item.age}</td>
+                `
+            },
+            services: {
+                endpoint: '/api/services',
+                headers: ['Name', 'Namespace', 'Type', 'Cluster IP', 'External IP', 'Ports', 'Age'],
+                row: (item) => `
+                    <td>${item.name}</td>
+                    <td>${item.namespace}</td>
+                    <td>${item.service_type}</td>
+                    <td>${item.cluster_ip}</td>
+                    <td>${item.external_ip}</td>
+                    <td>${item.ports}</td>
+                    <td>${item.age}</td>
+                `
+            },
+            nodes: {
+                endpoint: '/api/nodes',
+                headers: ['Name', 'Status', 'Roles', 'Age', 'Version'],
+                row: (item) => `
+                    <td>${item.name}</td>
+                    <td><span class="status ${item.status.toLowerCase().includes('ready') ? 'ready' : 'error'}">${item.status}</span></td>
+                    <td>${item.roles}</td>
+                    <td>${item.age}</td>
+                    <td>${item.version}</td>
+                `
+            },
+            namespaces: {
+                endpoint: '/api/namespaces',
+                headers: ['Name', 'Status', 'Age'],
+                row: (item) => `
+                    <td>${item.name}</td>
+                    <td><span class="status ${item.status.toLowerCase()}">${item.status}</span></td>
+                    <td>${item.age}</td>
+                `
+            }
+        };
+
+        async function loadContext() {
+            try {
+                const response = await fetch('/api/context');
+                const context = await response.json();
+                document.getElementById('context-badge').textContent = `Context: ${context}`;
+            } catch (e) {
+                document.getElementById('context-badge').textContent = 'Context: Unknown';
+            }
+        }
+
+        async function loadNamespaces() {
+            try {
+                const response = await fetch('/api/namespaces');
+                const namespaces = await response.json();
+                const select = document.getElementById('namespace-select');
+                select.innerHTML = '<option value="">All Namespaces</option>';
+                namespaces.forEach(ns => {
+                    const option = document.createElement('option');
+                    option.value = ns.name;
+                    option.textContent = ns.name;
+                    select.appendChild(option);
+                });
+            } catch (e) {
+                console.error('Failed to load namespaces:', e);
+            }
+        }
+
+        async function loadData() {
+            const view = views[currentView];
+            const tableHeader = document.getElementById('table-header');
+            const tableBody = document.getElementById('table-body');
+
+            // Set headers
+            tableHeader.innerHTML = `<tr>${view.headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+            tableBody.innerHTML = '<tr><td colspan="10" class="loading">Loading...</td></tr>';
+
+            try {
+                let url = view.endpoint;
+                if (currentNamespace) {
+                    url += `?namespace=${currentNamespace}`;
+                } else if (currentView !== 'nodes' && currentView !== 'namespaces') {
+                    url += '?all_namespaces=true';
+                }
+
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Failed to fetch data');
+
+                const data = await response.json();
+
+                if (data.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="10" class="loading">No resources found</td></tr>';
+                } else {
+                    tableBody.innerHTML = data.map(item => `<tr>${view.row(item)}</tr>`).join('');
+                }
+            } catch (e) {
+                tableBody.innerHTML = `<tr><td colspan="10" class="error-message">Error: ${e.message}</td></tr>`;
+            }
+        }
+
+        function switchView(view) {
+            currentView = view;
+            document.getElementById('section-title').textContent = view.charAt(0).toUpperCase() + view.slice(1);
+
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.view === view);
+            });
+
+            loadData();
+        }
+
+        function refreshData() {
+            loadData();
+        }
+
+        async function showLogs(namespace, name) {
+            const modal = document.getElementById('logs-modal');
+            const title = document.getElementById('logs-title');
+            const content = document.getElementById('logs-content');
+
+            title.textContent = `Logs: ${namespace}/${name}`;
+            content.textContent = 'Loading logs...';
+            modal.classList.add('active');
+
+            try {
+                const response = await fetch(`/api/pods/${namespace}/${name}/logs?tail=100`);
+                if (!response.ok) throw new Error('Failed to fetch logs');
+
+                const logs = await response.text();
+                content.textContent = logs || 'No logs available';
+            } catch (e) {
+                content.textContent = `Error: ${e.message}`;
+            }
+        }
+
+        function closeLogsModal() {
+            document.getElementById('logs-modal').classList.remove('active');
+        }
+
+        // Event listeners
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => switchView(item.dataset.view));
+        });
+
+        document.getElementById('namespace-select').addEventListener('change', (e) => {
+            currentNamespace = e.target.value;
+            loadData();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeLogsModal();
+        });
+
+        // Initial load
+        loadContext();
+        loadNamespaces();
+        loadData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadData, 30000);
+    </script>
+</body>
+</html>

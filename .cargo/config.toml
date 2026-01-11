@@ -1,0 +1,47 @@
+# Cargo configuration for kubecontrol
+
+[build]
+# Use all available CPU cores for compilation
+jobs = -1
+
+# macOS-specific optimizations (Apple Silicon)
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-C", "target-cpu=native",
+]
+
+# macOS-specific optimizations (Intel)
+[target.x86_64-apple-darwin]
+rustflags = [
+    "-C", "target-cpu=native",
+]
+
+# Linux x86_64 with mold linker (if available)
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+    "-C", "target-cpu=native",
+]
+# Uncomment if mold is installed for faster linking:
+# linker = "clang"
+# rustflags = ["-C", "target-cpu=native", "-C", "link-arg=-fuse-ld=mold"]
+
+# Linux ARM64
+[target.aarch64-unknown-linux-gnu]
+rustflags = [
+    "-C", "target-cpu=native",
+]
+
+# Alias for common cargo commands
+[alias]
+br = "build --release"
+bs = "build --profile release-small"
+bp = "build --profile profiling"
+
+# Registry configuration (sparse protocol is faster)
+[registries.crates-io]
+protocol = "sparse"
+
+# Network settings
+[net]
+git-fetch-with-cli = true
+retry = 3

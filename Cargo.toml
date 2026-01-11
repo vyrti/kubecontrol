@@ -1,0 +1,113 @@
+[package]
+name = "kubecontrol"
+version = "0.1.0"
+edition = "2021"
+authors = ["Aleksei Zaitsev"]
+description = "A fast, user-friendly Kubernetes CLI tool"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = ""
+keywords = ["kubernetes", "k8s", "cli", "devops"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "kc"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive", "env", "string"] }
+clap_complete = "4"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Kubernetes
+kube = { version = "2.0", features = ["runtime", "derive", "client", "rustls-tls"], default-features = false }
+k8s-openapi = { version = "0.26", features = ["v1_34"] }
+
+# Async traits
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml = "0.9"
+
+# Caching
+redb = "3"
+dashmap = "6"
+
+# TUI
+#ratatui = "0.29"
+#crossterm = "0.28"
+
+# Output formatting
+tabled = "0.20"
+owo-colors = { version = "4", features = ["supports-colors"] }
+humantime = "2"
+
+# Fuzzy matching
+nucleo = "0.5"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging/tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Misc
+dirs = "6"
+futures = "0.3"
+base64 = "0.22"
+bytes = "1"
+
+# Web UI
+axum = { version = "0.8", features = ["ws"] }
+rust-embed = { version = "8.9", features = ["axum"] }
+tower-http = { version = "0.6", features = ["cors", "fs"] }
+tokio-tungstenite = "0.28"
+open = "5"
+mime_guess = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3              # Maximum optimization
+lto = "fat"                # Full LTO for maximum optimization
+codegen-units = 1          # Single codegen unit for better optimization
+panic = "abort"            # Smaller binary, no unwinding
+strip = "symbols"          # Strip all symbols
+debug = false              # No debug info
+debug-assertions = false   # Disable debug assertions
+overflow-checks = false    # Disable overflow checks
+incremental = false        # Disable incremental compilation
+
+# Optimized for minimum binary size
+[profile.release-small]
+inherits = "release"
+opt-level = "z"            # Optimize for size
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+# Development with some optimizations (faster runtime, reasonable compile time)
+[profile.dev-fast]
+inherits = "dev"
+opt-level = 1              # Basic optimizations
+debug = true
+
+# Profiling profile (release + debug symbols)
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false
+

@@ -1,0 +1,12 @@
+/target
+Cargo.lock
+CLAUDE.md
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.tmp
+.env
+plan.txt
+plan*.txt
+roadmap.txt
