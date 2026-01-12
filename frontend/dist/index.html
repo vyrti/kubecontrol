@@ -1000,6 +1000,7 @@
                 <div class="nav-item" data-view="nodes">Nodes</div>
                 <div class="nav-item" data-view="namespaces">Namespaces</div>
                 <div class="nav-item" data-view="events">Events</div>
+                <div class="nav-item" data-view="version">Version</div>
             </div>
         </nav>
 
@@ -1463,6 +1464,12 @@
             // Special handling for debug view
             if (currentView === 'debug') {
                 await loadDebugView();
+                return;
+            }
+
+            // Special handling for version view
+            if (currentView === 'version') {
+                await loadVersionView();
                 return;
             }
 
@@ -1946,6 +1953,137 @@
             `;
         }
 
+        // Load Version View (cluster version information)
+        async function loadVersionView() {
+            const content = document.querySelector('.content');
+            content.innerHTML = `
+                <div class="toolbar">
+                    <h2>Cluster Version</h2>
+                    <div class="toolbar-actions">
+                        <button onclick="refreshData()">Refresh</button>
+                    </div>
+                </div>
+                <div id="version-content" class="loading">Loading cluster version information...</div>
+            `;
+
+            try {
+                const response = await fetch('/api/cluster/info');
+                if (!response.ok) throw new Error('Failed to fetch cluster version info');
+                const info = await response.json();
+
+                const versionContent = document.getElementById('version-content');
+                versionContent.className = '';
+
+                // Helper to format platform/provider names
+                const formatName = (name) => name ? name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Unknown';
+
+                versionContent.innerHTML = `
+                    <div class="pulse-dashboard">
+                        <div class="pulse-card">
+                            <h4>Kubernetes Version</h4>
+                            <div class="value" style="font-size: 1.5rem; color: var(--success);">${info.kubernetes_version || 'Unknown'}</div>
+                        </div>
+                        <div class="pulse-card">
+                            <h4>Platform</h4>
+                            <div class="value" style="font-size: 1.2rem; color: var(--accent);">${formatName(info.platform)}</div>
+                        </div>
+                        <div class="pulse-card">
+                            <h4>Cloud Provider</h4>
+                            <div class="value" style="font-size: 1.2rem; color: var(--accent);">${info.cloud_provider ? formatName(info.cloud_provider) : 'On-Premise / Unknown'}</div>
+                        </div>
+                        ${info.cluster_name ? `
+                        <div class="pulse-card">
+                            <h4>Cluster Name</h4>
+                            <div class="value" style="font-size: 1rem;">${info.cluster_name}</div>
+                        </div>` : ''}
+                        ${info.region ? `
+                        <div class="pulse-card">
+                            <h4>Region</h4>
+                            <div class="value" style="font-size: 1rem;">${info.region}</div>
+                        </div>` : ''}
+                        ${info.zone ? `
+                        <div class="pulse-card">
+                            <h4>Zone</h4>
+                            <div class="value" style="font-size: 1rem;">${info.zone}</div>
+                        </div>` : ''}
+                    </div>
+
+                    <div class="pulse-section">
+                        <h3>Node Summary</h3>
+                        <div class="pulse-dashboard">
+                            <div class="pulse-card">
+                                <h4>Total Nodes</h4>
+                                <div class="value">${info.nodes?.total || 0}</div>
+                            </div>
+                            <div class="pulse-card">
+                                <h4>Ready</h4>
+                                <div class="value" style="color: var(--success);">${info.nodes?.ready || 0}</div>
+                            </div>
+                            <div class="pulse-card">
+                                <h4>Control Plane</h4>
+                                <div class="value">${info.nodes?.control_plane || 0}</div>
+                            </div>
+                            <div class="pulse-card">
+                                <h4>Workers</h4>
+                                <div class="value">${info.nodes?.workers || 0}</div>
+                            </div>
+                        </div>
+                        ${info.nodes?.architectures?.length > 0 ? `
+                        <div style="margin-top: 1rem;">
+                            <strong>Architectures:</strong> ${info.nodes.architectures.join(', ')}
+                        </div>` : ''}
+                        ${info.nodes?.instance_types && Object.keys(info.nodes.instance_types).length > 0 ? `
+                        <div style="margin-top: 0.5rem;">
+                            <strong>Instance Types:</strong> ${Object.entries(info.nodes.instance_types).map(([type, count]) => type + ' (' + count + ')').join(', ')}
+                        </div>` : ''}
+                        ${info.nodes?.os_images && Object.keys(info.nodes.os_images).length > 0 ? `
+                        <div style="margin-top: 0.5rem;">
+                            <strong>OS Images:</strong> ${Object.entries(info.nodes.os_images).map(([os, count]) => os + ' (' + count + ')').join(', ')}
+                        </div>` : ''}
+                    </div>
+
+                    ${info.components && info.components.length > 0 ? `
+                    <div class="pulse-section">
+                        <h3>Components</h3>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border);">Component</th>
+                                    <th style="text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border);">Version</th>
+                                    <th style="text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border);">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${info.components.map(comp => `
+                                <tr>
+                                    <td style="padding: 0.5rem; border-bottom: 1px solid var(--border);">${comp.name}</td>
+                                    <td style="padding: 0.5rem; border-bottom: 1px solid var(--border);">${comp.version || '-'}</td>
+                                    <td style="padding: 0.5rem; border-bottom: 1px solid var(--border);">
+                                        <span class="status ${comp.status?.toLowerCase() || ''}">${comp.status || '-'}</span>
+                                    </td>
+                                </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>` : ''}
+
+                    ${info.metadata && Object.keys(info.metadata).length > 0 ? `
+                    <div class="pulse-section">
+                        <h3>Additional Metadata</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.5rem;">
+                            ${Object.entries(info.metadata).map(([key, value]) => `
+                            <div style="padding: 0.5rem; background: var(--card-bg); border-radius: 4px;">
+                                <strong>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong> ${value}
+                            </div>
+                            `).join('')}
+                        </div>
+                    </div>` : ''}
+                `;
+            } catch (e) {
+                document.getElementById('version-content').innerHTML = `<div class="error-message">Error: ${e.message}</div>`;
+            }
+        }
+
         function filterDebugIssues(severity) {
             document.querySelectorAll('.debug-filter-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.filter === severity);
@@ -1969,7 +2107,7 @@
             });
 
             // Restore table structure if switching away from special views
-            if (view !== 'pulse' && view !== 'health' && view !== 'debug') {
+            if (view !== 'pulse' && view !== 'health' && view !== 'debug' && view !== 'version') {
                 const content = document.querySelector('.content');
                 content.innerHTML = `
                     <div class="toolbar">
