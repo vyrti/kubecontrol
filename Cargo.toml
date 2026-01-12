@@ -89,8 +89,10 @@ tokio-test = "0.4"
 tower = { version = "0.5", features = ["util"] }
 
 [features]
-default = []
+default = ["aws"]
 aws = ["aws-config", "aws-sdk-iam", "aws-sdk-eks", "aws-sdk-sts", "urlencoding"]
+# Future: gcp = ["google-cloud-sdk-*"]
+# Future: azure = ["azure-sdk-*"]
 
 [profile.release]
 opt-level = 3              # Maximum optimization

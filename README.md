@@ -204,7 +204,7 @@ kc debug all
 
 | Command | Description |
 |---------|-------------|
-| `kc debug all` | Run all diagnostic checks |
+| `kc debug all` | Run all diagnostic checks (auto-detects cloud) |
 | `kc debug dns` | DNS debugging (CoreDNS health, resolution) |
 | `kc debug network` | Network connectivity diagnostics |
 | `kc debug pod <name>` | Pod-specific diagnostics |
@@ -217,6 +217,9 @@ kc debug all
 | `kc debug events` | Event correlation |
 | `kc debug ingress` | Ingress/load balancer debugging |
 | `kc debug cluster` | Cluster-wide health check |
+| `kc debug eks` | EKS-specific (IRSA, VPC CNI, Pod Identity) |
+| `kc debug gke` | GKE-specific (Workload Identity, Autopilot) |
+| `kc debug aks` | AKS-specific (Managed Identity, CNI) |
 
 ## Global Options
 
@@ -361,6 +364,35 @@ kc automatically detects your cloud provider and Kubernetes distribution:
 | Container-Optimized OS (Google) | OS image contains "Container-Optimized OS" |
 | Red Hat CoreOS | OS image contains "CoreOS" or "RHCOS" |
 
+### EKS Debugging with AWS SDK
+
+The AWS SDK is **enabled by default** for full EKS debugging with IAM validation. To build without AWS SDK (smaller binary, K8s-only checks):
+
+```bash
+cargo build --no-default-features
+```
+
+AWS SDK enables these additional checks:
+
+| Check | Description |
+|-------|-------------|
+| IRSA IAM Validation | Verifies IAM roles exist and have correct trust policies |
+| Cluster Config | Checks OIDC provider, endpoint access, logging, encryption |
+| Pod Identity | Validates EKS Pod Identity associations |
+
+**EKS Debug Checks (always available):**
+
+| Check | Description |
+|-------|-------------|
+| IRSA Annotations | Validates `eks.amazonaws.com/role-arn` on ServiceAccounts |
+| VPC CNI Health | Checks aws-node DaemonSet, detects CrashLoopBackOff |
+| EKS Add-ons | CoreDNS, kube-proxy, EBS CSI driver status |
+| Node Config | NetworkUnavailable conditions, IMDSv2, nodegroup membership |
+| Pod Identity Agent | EKS Pod Identity agent health |
+| aws-auth ConfigMap | IAM role/user mappings validation |
+
+Without AWS credentials, K8s-side checks still run with graceful degradation.
+
 ## Web Dashboard
 
 The built-in web dashboard provides a visual interface for your cluster:
@@ -383,11 +415,17 @@ Default URL: `http://127.0.0.1:9090`
 ## Build Profiles
 
 ```bash
-# Development (fast compile, slow runtime)
+# Development (includes AWS SDK by default)
 cargo build
 
-# Release (slow compile, fast runtime)
+# Development without cloud SDKs (smaller, faster compile)
+cargo build --no-default-features
+
+# Release (includes AWS SDK by default)
 cargo build --release
+
+# Release without cloud SDKs (minimum dependencies)
+cargo build --release --no-default-features
 
 # Minimum binary size
 cargo build --profile release-small
