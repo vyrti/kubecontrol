@@ -6,3 +6,4 @@ pub mod apps;
 pub mod registry;
 
 pub use traits::*;
+pub use registry::{RESOURCE_REGISTRY, ResourceRegistry, ResourceInfo};

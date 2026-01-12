@@ -244,6 +244,64 @@ src/
     └── websocket.rs  # WebSocket handlers
 ```
 
+## Testing
+
+### Run Unit Tests
+
+Unit tests run without requiring a Kubernetes cluster:
+
+```bash
+cargo test
+```
+
+### Run Integration Tests (requires Kubernetes cluster)
+
+Integration tests connect to a real Kubernetes cluster. Ensure you have:
+- A valid kubeconfig file
+- Access to a Kubernetes cluster
+- The default context points to a test cluster (not production!)
+
+```bash
+# Run all integration tests
+cargo test -- --ignored
+
+# Run specific integration test module
+cargo test integration::pods_test -- --ignored
+
+# Run a specific test
+cargo test test_list_pods_kube_system -- --ignored
+```
+
+### Run All Tests
+
+```bash
+# Unit tests followed by integration tests
+cargo test && cargo test -- --ignored
+```
+
+### Test Structure
+
+```
+tests/
+├── common/
+│   └── mod.rs              # Shared test utilities and mock helpers
+├── unit/
+│   ├── traits_test.rs      # humanize_duration, status_category tests
+│   ├── output_test.rs      # format_table, format_json, format_yaml tests
+│   ├── registry_test.rs    # ResourceRegistry lookup tests
+│   ├── resources_test.rs   # Resource trait implementation tests
+│   └── error_test.rs       # Error type tests
+├── integration/
+│   ├── client_test.rs      # Real cluster: client creation, context switching
+│   ├── pods_test.rs        # Real cluster: pod operations
+│   ├── deployments_test.rs # Real cluster: deployment operations
+│   ├── services_test.rs    # Real cluster: service operations
+│   ├── configmaps_test.rs  # Real cluster: configmap operations
+│   ├── nodes_test.rs       # Real cluster: node operations
+│   └── web_api_test.rs     # Real cluster: web API endpoint tests
+└── cli_test.rs             # CLI parsing tests
+```
+
 ## Requirements
 
 - Rust 1.75+ (for building)
