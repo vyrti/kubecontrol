@@ -534,6 +534,237 @@ The `kc debug eks` command runs **200+ diagnostic checks** covering both AWS/EKS
 
 Without AWS credentials, K8s-side checks still run with graceful degradation.
 
+### GKE Debugging with GCP SDK
+
+GCP SDK support is **optional** and requires the `gcp` feature flag:
+
+```bash
+cargo build --features gcp
+```
+
+The `kc debug gke` command runs **200+ diagnostic checks** covering both GCP/GKE provider-specific issues and common Kubernetes issues on GKE clusters.
+
+#### GCP SDK-Enhanced Checks (requires credentials)
+
+| Category | Checks |
+|----------|--------|
+| Cluster Config | Release channel, maintenance windows, Binary Authorization |
+| Workload Identity | GCP SA binding validation, federation settings |
+| Node Pools | Auto-upgrade status, surge settings |
+
+#### GKE Provider-Specific Checks (~100 checks)
+
+**Workload Identity**
+- WI annotation missing on ServiceAccount
+- GCP SA format validation
+- WI IAM binding verification
+- WI token injection status
+- GKE metadata server DaemonSet health
+- Cross-project WI configuration
+- WI pool configuration issues
+- Fleet WI configuration
+- Legacy compute SA detection
+
+**GKE Networking**
+- VPC-native mode status
+- Pod/Service CIDR exhaustion
+- Alias IP range issues
+- Dataplane V2 / Cilium CNI status
+- Network Policy enforcement
+- Private cluster egress issues
+- Cloud NAT configuration
+- Shared VPC permission issues
+- Gateway API controller status
+
+**GKE Load Balancer**
+- GKE Ingress controller health
+- NEG (Network Endpoint Groups) issues
+- BackendConfig validation
+- Google-managed certificate status
+- Cloud Armor policy issues
+- IAP (Identity-Aware Proxy) configuration
+- Multi-cluster Ingress (MCI) issues
+- Gateway/HTTPRoute status
+- Internal LB subnet configuration
+
+**GKE Storage**
+- PD CSI driver installation and health
+- Filestore CSI driver status
+- GCS Fuse driver issues
+- PVC pending issues (wrong zone)
+- Regional PD replication
+- Hyperdisk configuration
+- Backup for GKE status
+
+**GKE Node Pools**
+- Node conditions (NotReady, MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable)
+- Cluster Autoscaler health
+- Node auto-provisioning (NAP) issues
+- Spot/Preemptible VM termination handling
+- Node pool upgrade status
+- Containerd issues
+- GPU node driver status
+- Arm64 node scheduling
+
+**GCR/Artifact Registry**
+- ImagePullBackOff (GCR/AR)
+- Artifact Registry authentication
+- Binary Authorization blocking
+- Image signature verification
+- Cross-project image pull issues
+- gcr.io deprecation warnings
+
+**GKE Observability**
+- Cloud Logging agent (fluentbit-gke) health
+- Cloud Monitoring agent (gke-metrics-agent) status
+- Managed Prometheus issues
+- Custom metrics adapter status
+- Workload metrics export configuration
+
+**GKE Control Plane**
+- Cluster version EOL warnings
+- Release channel configuration
+- Maintenance window issues
+- Shielded GKE status
+- Master authorized networks
+- Cluster secrets encryption
+- Config Connector status
+
+#### Kubernetes Checks on GKE (~100 checks)
+
+Same comprehensive Kubernetes checks as EKS (pods, deployments, services, RBAC, etc.) adapted for GKE clusters.
+
+### AKS Debugging with Azure SDK
+
+Azure SDK support is **optional** and requires the `azure` feature flag:
+
+```bash
+cargo build --features azure
+```
+
+The `kc debug aks` command runs **200+ diagnostic checks** covering both Azure/AKS provider-specific issues and common Kubernetes issues on AKS clusters.
+
+#### Azure SDK-Enhanced Checks (requires credentials)
+
+| Category | Checks |
+|----------|--------|
+| Cluster Config | Auto-upgrade, maintenance windows, API server SLA |
+| Workload Identity | Federated credential validation |
+| Node Pools | VMSS status, node image versions |
+
+#### AKS Provider-Specific Checks (~100 checks)
+
+**Azure Identity**
+- Workload Identity not configured
+- WI client-id/tenant-id missing
+- WI federation validation
+- Managed Identity assignment
+- AAD Pod Identity (deprecated) detection
+- OIDC issuer status
+- Federated credential configuration
+- Service principal expiration
+- WI webhook health
+- Kubelet identity issues
+
+**Azure CNI**
+- Azure CNI health status
+- Pod IP exhaustion
+- Overlay CNI issues
+- Azure NPM (Network Policy Manager) status
+- Calico/Cilium on AKS issues
+- Dynamic IP allocation
+- VNET integration issues
+- Azure Firewall UDR problems
+- DNS resolution (Azure DNS)
+- Dual-stack networking
+
+**AKS Load Balancer**
+- Standard LB provisioning
+- Internal LB status
+- Health probe failures
+- App Gateway Ingress Controller (AGIC) health
+- AGIC sync issues
+- App Gateway WAF blocking
+- Azure Front Door issues
+- TLS cert issues (Key Vault)
+- SNAT port exhaustion
+- NAT Gateway configuration
+
+**AKS Storage**
+- Azure Disk CSI driver health
+- Azure File CSI driver status
+- PVC pending issues
+- Disk attach timeouts
+- Premium storage on non-premium VM
+- Ultra Disk configuration
+- Azure Files SMB/NFS issues
+- Blob CSI driver status
+- Disk encryption (CMK) issues
+- IOPS throttling
+
+**AKS Node Pools**
+- Node conditions (NotReady, MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable)
+- Cluster Autoscaler issues
+- KEDA autoscaler status
+- Spot node termination
+- VM scale set issues
+- Ephemeral OS disk issues
+- GPU node driver (NVIDIA) status
+- Windows node pool issues
+
+**ACR (Azure Container Registry)**
+- ImagePullBackOff (ACR)
+- ACR authentication failures
+- ACR private endpoint issues
+- ACR geo-replication
+- ACR attached but pull fails
+- Content trust verification
+- ACR throttling
+- Defender for Containers scan issues
+
+**AKS Observability**
+- Azure Monitor agent status
+- Container Insights configuration
+- Log Analytics workspace issues
+- Managed Prometheus status
+- Grafana integration
+- Diagnostic settings
+- OpenTelemetry collector issues
+
+**AKS Control Plane**
+- Cluster version EOL warnings
+- Auto-upgrade configuration
+- Maintenance window issues
+- API server SLA status
+- Private cluster issues
+- Authorized IP ranges
+- Azure Policy addon status
+- Defender for Containers
+- Key Vault secrets provider (CSI)
+- GitOps (Flux) issues
+
+#### Kubernetes Checks on AKS (~100 checks)
+
+Same comprehensive Kubernetes checks as EKS (pods, deployments, services, RBAC, etc.) adapted for AKS clusters.
+
+### Building with Multiple Cloud SDKs
+
+You can enable multiple cloud SDKs at once:
+
+```bash
+# All cloud SDKs (AWS enabled by default)
+cargo build --features "aws,gcp,azure"
+
+# GCP and Azure only (no AWS)
+cargo build --no-default-features --features "gcp,azure"
+
+# Just AWS (default)
+cargo build
+
+# No cloud SDKs (K8s-only checks)
+cargo build --no-default-features
+```
+
 ## Web Dashboard
 
 The built-in web dashboard provides a visual interface for your cluster:
