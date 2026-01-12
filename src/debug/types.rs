@@ -371,6 +371,32 @@ impl ExitCodeInfo {
                 "Invalid arguments",
                 "Missing required arguments",
             ]),
+            // Application-specific exit codes (3-8)
+            3 => ("Invalid usage", vec![
+                "Missing required environment variable",
+                "Configuration parsing error",
+            ]),
+            4 => ("Permission denied", vec![
+                "Insufficient privileges",
+                "Security context violation",
+            ]),
+            5 => ("I/O error", vec![
+                "Disk full",
+                "Read/write failure",
+                "NFS mount stale",
+            ]),
+            6 => ("No such device", vec![
+                "Missing mount point",
+                "Volume detached",
+            ]),
+            7 => ("Argument list too long", vec![
+                "Too many environment variables",
+                "ConfigMap too large",
+            ]),
+            8 => ("Exec format error", vec![
+                "Wrong architecture binary",
+                "Corrupted executable",
+            ]),
             126 => ("Command not executable", vec![
                 "Permission denied",
                 "Script not executable",
@@ -401,6 +427,44 @@ impl ExitCodeInfo {
                 "Graceful termination requested",
                 "Pod eviction",
                 "Deployment rollout",
+            ]),
+            // Additional signals
+            135 => ("SIGBUS", vec![
+                "Bus error",
+                "Invalid memory alignment",
+                "Memory mapped file error",
+            ]),
+            136 => ("SIGFPE", vec![
+                "Floating point exception",
+                "Division by zero",
+            ]),
+            138 => ("SIGUSR1", vec![
+                "Custom signal 1",
+                "Application-specific shutdown",
+            ]),
+            140 => ("SIGUSR2", vec![
+                "Custom signal 2",
+                "Application-specific reload",
+            ]),
+            141 => ("SIGPIPE", vec![
+                "Broken pipe",
+                "Connection closed by remote end",
+            ]),
+            142 => ("SIGALRM", vec![
+                "Alarm clock signal",
+                "Timeout exceeded",
+            ]),
+            152 => ("SIGXCPU", vec![
+                "CPU time limit exceeded",
+                "Process ran too long",
+            ]),
+            153 => ("SIGXFSZ", vec![
+                "File size limit exceeded",
+                "Log rotation needed",
+            ]),
+            159 => ("SIGSYS", vec![
+                "Bad system call",
+                "Seccomp violation",
             ]),
             255 => ("Exit status out of range", vec![
                 "Fatal error",
@@ -446,40 +510,100 @@ pub enum ContainerStateAnalysis {
 
 impl ContainerStateAnalysis {
     /// Analyze waiting state reason
-    pub fn analyze_waiting_reason(reason: &str, message: Option<&str>) -> (bool, Vec<String>) {
+    pub fn analyze_waiting_reason(reason: &str, _message: Option<&str>) -> (bool, Vec<String>) {
         match reason {
             "ContainerCreating" => (true, vec![
                 "Wait for container to be created".to_string(),
-                "Check node resources if taking too long".to_string(),
+                "If slow, run `kc describe pod <name>` to check node resources".to_string(),
             ]),
             "PodInitializing" => (true, vec![
                 "Wait for init containers to complete".to_string(),
+                "Run `kc logs <pod> -c <init-container>` to check progress".to_string(),
             ]),
             "ImagePullBackOff" | "ErrImagePull" => (true, vec![
-                "Verify image name and tag are correct".to_string(),
-                "Check image registry authentication".to_string(),
-                "Verify network connectivity to registry".to_string(),
-                format!("kubectl describe pod <name> for details"),
+                "Verify image name and tag exist in registry".to_string(),
+                "Check imagePullSecrets: `kc describe pod <name>`".to_string(),
+                "View detailed error in events: `kc describe pod <name>`".to_string(),
             ]),
             "CrashLoopBackOff" => (false, vec![
-                "Check container logs for error messages".to_string(),
-                "Verify application configuration".to_string(),
-                "Check resource limits".to_string(),
-                "Verify health probes configuration".to_string(),
+                "Run `kc logs <pod> --previous` to see crash logs".to_string(),
+                "Check exit code in `kc describe pod <name>` under 'Last State'".to_string(),
+                "Verify config and resources in pod spec".to_string(),
+                "Test probe endpoint: `kc exec <pod> -- curl localhost:<port><path>`".to_string(),
             ]),
             "CreateContainerConfigError" => (false, vec![
-                "Check ConfigMap/Secret references exist".to_string(),
-                "Verify volume mounts are correct".to_string(),
+                "Check ConfigMap exists: `kc get cm <name>`".to_string(),
+                "Check Secret exists: `kc get secret <name>`".to_string(),
+                "Verify key names: `kc describe pod <name>` shows error details".to_string(),
             ]),
             "CreateContainerError" => (false, vec![
-                "Check container runtime logs".to_string(),
-                "Verify security context settings".to_string(),
+                "Run `kc describe pod <name>` for detailed error".to_string(),
+                "Verify security context settings are compatible".to_string(),
+                "Check container runtime logs on the node".to_string(),
             ]),
             "InvalidImageName" => (false, vec![
                 "Fix the image name in pod spec".to_string(),
+                "Verify image reference format: registry/repo:tag".to_string(),
+            ]),
+            // New waiting reasons
+            "RunContainerError" => (false, vec![
+                "Run `kc describe pod <name>` to see detailed error".to_string(),
+                "Check container runtime logs on the node".to_string(),
+                "Verify security context settings are compatible".to_string(),
+            ]),
+            "PostStartHookError" => (false, vec![
+                "Run `kc logs <pod> -c <container> --previous` to see logs before failure".to_string(),
+                "Check postStart lifecycle hook command and dependencies".to_string(),
+                "Verify required services/files are available at container start".to_string(),
+            ]),
+            "PreStopHookError" => (false, vec![
+                "Check preStop hook command in pod spec".to_string(),
+                "Verify hook timeout settings".to_string(),
+            ]),
+            "StartError" => (false, vec![
+                "Run `kc describe pod <name>` for detailed error".to_string(),
+                "Check if command/entrypoint exists in the image".to_string(),
+                "Verify working directory and file permissions".to_string(),
+            ]),
+            "DeadlineExceeded" => (false, vec![
+                "Container startup exceeded activeDeadlineSeconds".to_string(),
+                "Consider increasing the deadline or optimizing startup time".to_string(),
+            ]),
+            "Evicted" => (false, vec![
+                "Pod was evicted - run `kc describe pod <name>` for reason".to_string(),
+                "Common causes: node memory/disk/PID pressure, preemption".to_string(),
+                "Check node: `kc debug node <node-name>`".to_string(),
+            ]),
+            "NodeAffinity" => (true, vec![
+                "Waiting for node matching affinity requirements".to_string(),
+                "Run `kc nodes` to see available nodes".to_string(),
+                "Review nodeAffinity and nodeSelector in pod spec".to_string(),
+            ]),
+            "ImageInspectError" => (false, vec![
+                "Cannot inspect container image".to_string(),
+                "Verify image exists and is accessible from node".to_string(),
+                "Check container runtime status on the node".to_string(),
+            ]),
+            "ContainerStatusUnknown" => (true, vec![
+                "Container status cannot be determined - transient state".to_string(),
+                "If persistent, check node and kubelet health".to_string(),
+            ]),
+            "Blocked" => (false, vec![
+                "Container is blocked from starting - check PodSecurityPolicy/PSA".to_string(),
+                "Review security context and capabilities requirements".to_string(),
+            ]),
+            "ExceededGracePeriod" => (false, vec![
+                "Container failed to terminate within grace period".to_string(),
+                "Consider increasing terminationGracePeriodSeconds".to_string(),
+            ]),
+            "NodeLost" => (true, vec![
+                "Node hosting this pod is unreachable".to_string(),
+                "Pod may be rescheduled automatically once detected".to_string(),
+                "Check node status and network connectivity".to_string(),
             ]),
             _ => (true, vec![
-                format!("Check events: kubectl describe pod <name>"),
+                "Run `kc describe pod <name>` for detailed status".to_string(),
+                "Run `kc debug pod <name>` for full diagnostics".to_string(),
             ]),
         }
     }

@@ -84,7 +84,10 @@ async fn analyze_pod(client: &Client, pod: &Pod) -> Result<Vec<DebugIssue>, KcEr
                         format!("Pod {} is in Failed phase. Check events and container logs.", name),
                     )
                     .with_namespace(namespace)
-                    .with_remediation("Check pod events with 'kubectl describe pod' and container logs with 'kubectl logs'")
+                    .with_remediation(format!(
+                        "Run `kc logs {} --previous` for crash logs. Run `kc describe pod {}` for events.",
+                        name, name
+                    ))
                 );
             }
             "Pending" => {
@@ -112,6 +115,126 @@ async fn analyze_pod(client: &Client, pod: &Pod) -> Result<Vec<DebugIssue>, KcEr
                 }
             }
             _ => {}
+        }
+    }
+
+    // Check for stuck terminating pods
+    if pod.metadata.deletion_timestamp.is_some() {
+        issues.push(
+            DebugIssue::new(
+                Severity::Warning,
+                DebugCategory::Pod,
+                "Pod",
+                name,
+                "Pod stuck in Terminating state",
+                format!("Pod {} has a deletion timestamp but has not been fully terminated", name),
+            )
+            .with_namespace(namespace)
+            .with_remediation(format!(
+                "Check finalizers: `kc describe pod {}`. Force delete if stuck: `kc delete pod {} --force --grace-period=0`",
+                name, name
+            ))
+        );
+    }
+
+    // Check pod conditions for additional issues
+    if let Some(conditions) = &status.conditions {
+        for condition in conditions {
+            match (condition.type_.as_str(), condition.status.as_str()) {
+                ("Ready", "False") => {
+                    // Only report if pod is not Pending (which is expected to not be ready)
+                    if status.phase.as_deref() != Some("Pending") {
+                        let reason = condition.reason.as_deref().unwrap_or("Unknown");
+                        let message = condition.message.as_deref().unwrap_or("");
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Warning,
+                                DebugCategory::Pod,
+                                "Pod",
+                                name,
+                                format!("Pod not ready: {}", reason),
+                                format!("Pod {} is not ready. {}", name, message),
+                            )
+                            .with_namespace(namespace)
+                            .with_remediation(format!(
+                                "Run `kc describe pod {}` for status. Check container readiness probes.",
+                                name
+                            ))
+                        );
+                    }
+                }
+                ("ContainersReady", "False") => {
+                    if status.phase.as_deref() == Some("Running") {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Warning,
+                                DebugCategory::Pod,
+                                "Pod",
+                                name,
+                                "Containers not ready",
+                                format!("Not all containers in pod {} are ready. {}", name,
+                                    condition.message.as_deref().unwrap_or("")),
+                            )
+                            .with_namespace(namespace)
+                            .with_remediation(format!(
+                                "Run `kc logs {}` to check each container. Verify readiness probes.",
+                                name
+                            ))
+                        );
+                    }
+                }
+                ("Initialized", "False") => {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Pod,
+                            "Pod",
+                            name,
+                            "Pod initialization incomplete",
+                            format!("Init containers have not completed for pod {}. {}",
+                                name, condition.message.as_deref().unwrap_or("")),
+                        )
+                        .with_namespace(namespace)
+                        .with_remediation(format!(
+                            "Check init container status: `kc describe pod {}`. Review init container logs.",
+                            name
+                        ))
+                    );
+                }
+                ("DisruptionTarget", "True") => {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Info,
+                            DebugCategory::Pod,
+                            "Pod",
+                            name,
+                            "Pod targeted for disruption",
+                            format!("Pod {} is being considered for eviction or disruption", name),
+                        )
+                        .with_namespace(namespace)
+                        .with_remediation("Pod may be evicted due to maintenance or preemption. This is informational.")
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Check QoS class for eviction risk
+    if let Some(qos_class) = &status.qos_class {
+        if qos_class == "BestEffort" {
+            issues.push(
+                DebugIssue::new(
+                    Severity::Warning,
+                    DebugCategory::Pod,
+                    "Pod",
+                    name,
+                    "BestEffort QoS - first to be evicted",
+                    format!("Pod {} has no resource requests/limits. It will be first to evict under memory pressure.", name),
+                )
+                .with_namespace(namespace)
+                .with_remediation("Set resource requests and limits to achieve Burstable or Guaranteed QoS class")
+            );
         }
     }
 
@@ -161,7 +284,10 @@ async fn analyze_pod(client: &Client, pod: &Pod) -> Result<Vec<DebugIssue>, KcEr
                                 ),
                             )
                             .with_namespace(namespace)
-                            .with_remediation("Check init container logs for error details")
+                            .with_remediation(format!(
+                                "Run `kc logs {} -c {}` for init container logs. Check `kc describe pod {}` for events.",
+                                name, init_status.name, name
+                            ))
                             .with_details(serde_json::json!({
                                 "pod": name,
                                 "container": init_status.name,
@@ -194,7 +320,10 @@ async fn analyze_pod(client: &Client, pod: &Pod) -> Result<Vec<DebugIssue>, KcEr
                         ),
                     )
                     .with_namespace(namespace)
-                    .with_remediation("Check container logs for root cause. Common issues: exit code errors, OOMKilled, liveness probe failures.")
+                    .with_remediation(format!(
+                        "Run `kc logs {} -c {} --previous` for crash logs. Check exit codes in `kc describe pod {}`.",
+                        name, cs.name, name
+                    ))
                     .with_details(serde_json::json!({
                         "pod": name,
                         "container": cs.name,
@@ -270,7 +399,10 @@ async fn analyze_pod(client: &Client, pod: &Pod) -> Result<Vec<DebugIssue>, KcEr
                                 ),
                             )
                             .with_namespace(namespace)
-                            .with_remediation("Increase memory limits or optimize application memory usage. Check for memory leaks.")
+                            .with_remediation(format!(
+                                "Increase memory limits. Check usage: `kc exec {} -- cat /proc/meminfo`. Profile for memory leaks.",
+                                name
+                            ))
                             .with_details(serde_json::json!({
                                 "pod": name,
                                 "container": cs.name,
@@ -331,6 +463,35 @@ async fn analyze_pod(client: &Client, pod: &Pod) -> Result<Vec<DebugIssue>, KcEr
                     }
                 }
             }
+
+            // Check for container running but not ready
+            if !cs.ready {
+                if let Some(state) = &cs.state {
+                    if state.running.is_some() {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Warning,
+                                DebugCategory::Pod,
+                                "Container",
+                                &cs.name,
+                                "Container running but not ready",
+                                format!("Container {} is running but not passing readiness probe", cs.name),
+                            )
+                            .with_namespace(namespace)
+                            .with_remediation(format!(
+                                "Check readiness probe: `kc describe pod {}`. Test: `kc exec {} -- curl localhost:<port><path>`",
+                                name, name
+                            ))
+                            .with_details(serde_json::json!({
+                                "pod": name,
+                                "container": cs.name,
+                                "running": true,
+                                "ready": false,
+                            }))
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -352,7 +513,10 @@ async fn analyze_pod(client: &Client, pod: &Pod) -> Result<Vec<DebugIssue>, KcEr
                     format!("Container {} has no resource limits. This can lead to resource contention and OOM issues.", container.name),
                 )
                 .with_namespace(namespace)
-                .with_remediation("Define CPU and memory limits for the container")
+                .with_remediation(format!(
+                    "Add CPU/memory limits. Monitor: `kc exec {} -- top` or check metrics.",
+                    name
+                ))
                 .with_details(serde_json::json!({
                     "pod": name,
                     "container": container.name,
@@ -376,7 +540,7 @@ async fn analyze_pod(client: &Client, pod: &Pod) -> Result<Vec<DebugIssue>, KcEr
                     format!("Container {} has no resource requests. The scheduler may not allocate appropriate resources.", container.name),
                 )
                 .with_namespace(namespace)
-                .with_remediation("Define CPU and memory requests for better scheduling")
+                .with_remediation("Define CPU and memory requests for better scheduling. Run `kc debug resources` to check cluster allocation.")
             );
         }
 
@@ -392,7 +556,10 @@ async fn analyze_pod(client: &Client, pod: &Pod) -> Result<Vec<DebugIssue>, KcEr
                     format!("Container {} has no liveness or readiness probes. Kubernetes cannot detect if the container is healthy.", container.name),
                 )
                 .with_namespace(namespace)
-                .with_remediation("Add liveness and/or readiness probes for better health detection")
+                .with_remediation(format!(
+                    "Add liveness/readiness probes. Test: `kc exec {} -- curl localhost:<port>/health`",
+                    name
+                ))
             );
         }
 
@@ -464,6 +631,74 @@ async fn analyze_pod(client: &Client, pod: &Pod) -> Result<Vec<DebugIssue>, KcEr
         );
     }
 
+    // Check for hostPath volumes (security concern)
+    if let Some(volumes) = &spec.volumes {
+        for volume in volumes {
+            if let Some(host_path) = &volume.host_path {
+                let path = &host_path.path;
+                let severity = if path == "/" || path.starts_with("/etc") || path.starts_with("/var/run") || path.starts_with("/proc") {
+                    Severity::Warning
+                } else {
+                    Severity::Info
+                };
+
+                issues.push(
+                    DebugIssue::new(
+                        severity,
+                        DebugCategory::Pod,
+                        "Volume",
+                        &volume.name,
+                        format!("hostPath volume: {}", path),
+                        format!("Pod {} mounts host path {}. This bypasses container isolation.", name, path),
+                    )
+                    .with_namespace(namespace)
+                    .with_remediation("Consider if hostPath is necessary. Use PVCs or ConfigMaps/Secrets when possible.")
+                );
+            }
+
+            // Check emptyDir without sizeLimit
+            if let Some(empty_dir) = &volume.empty_dir {
+                if empty_dir.size_limit.is_none() {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Info,
+                            DebugCategory::Pod,
+                            "Volume",
+                            &volume.name,
+                            "emptyDir without sizeLimit",
+                            format!("Volume {} has no sizeLimit. Pod may be evicted if it uses too much ephemeral storage.", volume.name),
+                        )
+                        .with_namespace(namespace)
+                        .with_remediation("Consider setting sizeLimit on emptyDir to prevent eviction")
+                    );
+                }
+            }
+        }
+    }
+
+    // Check ephemeral container status
+    if let Some(ephemeral_statuses) = &status.ephemeral_container_statuses {
+        for es in ephemeral_statuses {
+            if let Some(state) = &es.state {
+                if let Some(waiting) = &state.waiting {
+                    let reason = waiting.reason.as_deref().unwrap_or("Unknown");
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Pod,
+                            "EphemeralContainer",
+                            &es.name,
+                            format!("Ephemeral container waiting: {}", reason),
+                            format!("Debug container {} is waiting: {}", es.name, waiting.message.as_deref().unwrap_or("")),
+                        )
+                        .with_namespace(namespace)
+                        .with_remediation(format!("Check ephemeral container status: `kc describe pod {}`", name))
+                    );
+                }
+            }
+        }
+    }
+
     // Check events for additional issues
     let event_issues = check_pod_events(client, namespace, name).await?;
     issues.extend(event_issues);
@@ -497,6 +732,9 @@ async fn check_pod_events(
                 _ => Severity::Info,
             };
 
+            // Get event-specific remediation
+            let remediation = get_event_remediation(reason, pod_name);
+
             issues.push(
                 DebugIssue::new(
                     severity,
@@ -507,6 +745,7 @@ async fn check_pod_events(
                     message.to_string(),
                 )
                 .with_namespace(namespace)
+                .with_remediation(remediation)
                 .with_details(serde_json::json!({
                     "pod": pod_name,
                     "event_type": event_type,
@@ -523,11 +762,77 @@ async fn check_pod_events(
 /// Get remediation for scheduling issues
 fn get_scheduling_remediation(reason: &str) -> String {
     match reason {
-        "Unschedulable" => "Check node capacity and pod resource requests. Consider adding more nodes or reducing resource requests.".to_string(),
-        "FailedScheduling" => "Check node affinity, taints, tolerations, and available resources.".to_string(),
-        "InsufficientCPU" => "Reduce CPU requests or add nodes with more CPU capacity.".to_string(),
-        "InsufficientMemory" => "Reduce memory requests or add nodes with more memory.".to_string(),
-        "PodToleratesNodeTaints" => "Add appropriate tolerations to the pod spec.".to_string(),
-        _ => "Check pod events and node status for more details.".to_string(),
+        "Unschedulable" => "Run `kc nodes` for capacity. Run `kc debug resources` for allocation. Reduce requests or scale.".to_string(),
+        "FailedScheduling" => "Run `kc describe pod <name>` for constraints. Check `kc nodes` for taints/resources.".to_string(),
+        "InsufficientCPU" => "Check CPU: `kc debug resources`. Reduce CPU requests or add nodes.".to_string(),
+        "InsufficientMemory" => "Check memory: `kc debug resources`. Reduce memory requests or add nodes.".to_string(),
+        "PodToleratesNodeTaints" => "View taints: `kc describe node <name>`. Add matching tolerations to pod spec.".to_string(),
+        "NodeSelectorMismatch" | "NoNodesAvailable" => "Run `kc nodes` for available nodes. Review nodeSelector in pod spec.".to_string(),
+        "PodAffinityRulesNotMatch" => "Check affinity rules in spec. Run `kc pods -l <selector>` for matching pods.".to_string(),
+        "TaintToleration" => "Node has taints pod doesn't tolerate. View: `kc describe node <name>`. Add tolerations.".to_string(),
+        "NodeResourcesFit" => "Node doesn't have enough resources. Check `kc nodes` and `kc debug resources`.".to_string(),
+        _ => "Run `kc describe pod <name>` for events. Run `kc debug cluster` for diagnostics.".to_string(),
+    }
+}
+
+/// Get remediation for pod events
+fn get_event_remediation(reason: &str, pod_name: &str) -> String {
+    match reason {
+        "FailedScheduling" => format!(
+            "Run `kc describe pod {}` for scheduling constraints. Check `kc nodes` for resources.",
+            pod_name
+        ),
+        "FailedMount" | "FailedAttachVolume" => format!(
+            "Run `kc debug storage` to check PVC/PV status. Verify volume exists: `kc get pvc`."
+        ),
+        "Unhealthy" => format!(
+            "Check probe config: `kc describe pod {}`. Test probe: `kc exec {} -- curl localhost:<port><path>`.",
+            pod_name, pod_name
+        ),
+        "BackOff" => format!(
+            "Run `kc logs {} --previous` for crash logs. Check `kc describe pod {}` for exit codes.",
+            pod_name, pod_name
+        ),
+        "Evicted" => format!(
+            "Pod was evicted. Run `kc debug node <node>` to check node pressure. Review resource requests."
+        ),
+        "Preempted" => format!(
+            "Pod was preempted by higher priority pod. Review PriorityClass settings."
+        ),
+        "FailedCreatePodSandbox" => format!(
+            "Network/CNI issue. Run `kc debug network` to diagnose CNI health."
+        ),
+        "FailedKillPod" => format!(
+            "Container won't terminate. May need `kc delete pod {} --force --grace-period=0`.",
+            pod_name
+        ),
+        "NodeNotReady" => format!(
+            "Node is not ready. Check node status: `kc nodes`. Run `kc debug node <name>`."
+        ),
+        "NetworkNotReady" => format!(
+            "Network plugin not ready. Run `kc debug network` for CNI diagnostics."
+        ),
+        "FailedSync" => format!(
+            "Kubelet failed to sync pod. Check `kc describe pod {}` and node kubelet logs.",
+            pod_name
+        ),
+        "FailedValidation" => format!(
+            "Pod spec validation failed. Check `kc describe pod {}` for details.",
+            pod_name
+        ),
+        "FailedPostStartHook" => format!(
+            "PostStart hook failed. Run `kc logs {} --previous` to see logs.",
+            pod_name
+        ),
+        "FailedPreStopHook" => format!(
+            "PreStop hook failed. Check pod spec for hook definition."
+        ),
+        "ExceededGracePeriod" => format!(
+            "Container exceeded termination grace period. Consider increasing terminationGracePeriodSeconds."
+        ),
+        _ => format!(
+            "Run `kc describe pod {}` for full event details.",
+            pod_name
+        ),
     }
 }

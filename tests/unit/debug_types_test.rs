@@ -729,7 +729,7 @@ fn test_analyze_waiting_reason_image_pull_backoff() {
 
     assert!(is_recoverable);
     assert!(actions.iter().any(|a| a.contains("image name")));
-    assert!(actions.iter().any(|a| a.contains("registry authentication")));
+    assert!(actions.iter().any(|a| a.contains("imagePullSecrets")));
 }
 
 #[test]
@@ -745,8 +745,8 @@ fn test_analyze_waiting_reason_crash_loop_backoff() {
     let (is_recoverable, actions) = ContainerStateAnalysis::analyze_waiting_reason("CrashLoopBackOff", None);
 
     assert!(!is_recoverable);
-    assert!(actions.iter().any(|a| a.contains("container logs")));
-    assert!(actions.iter().any(|a| a.contains("health probes")));
+    assert!(actions.iter().any(|a| a.contains("crash logs")));
+    assert!(actions.iter().any(|a| a.contains("exit code")));
 }
 
 #[test]
@@ -754,7 +754,7 @@ fn test_analyze_waiting_reason_create_container_config_error() {
     let (is_recoverable, actions) = ContainerStateAnalysis::analyze_waiting_reason("CreateContainerConfigError", None);
 
     assert!(!is_recoverable);
-    assert!(actions.iter().any(|a| a.contains("ConfigMap/Secret")));
+    assert!(actions.iter().any(|a| a.contains("ConfigMap")));
 }
 
 #[test]
@@ -778,7 +778,7 @@ fn test_analyze_waiting_reason_unknown() {
     let (is_recoverable, actions) = ContainerStateAnalysis::analyze_waiting_reason("SomeUnknownReason", None);
 
     assert!(is_recoverable);
-    assert!(actions.iter().any(|a| a.contains("kubectl describe pod")));
+    assert!(actions.iter().any(|a| a.contains("kc describe pod")));
 }
 
 // ============================================================================
