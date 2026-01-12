@@ -4,7 +4,7 @@ use crate::cli::ExecArgs;
 use crate::client::create_client;
 use crate::error::{KcError, Result};
 use k8s_openapi::api::core::v1::Pod;
-use kube::api::AttachParams;
+use kube::api::{AttachParams, ListParams};
 use kube::Api;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -22,7 +22,7 @@ pub async fn run_exec(
 
     let client = create_client(context).await?;
     let ns = namespace.unwrap_or("default");
-    let api: Api<Pod> = Api::namespaced(client, ns);
+    let api: Api<Pod> = Api::namespaced(client.clone(), ns);
 
     // Build attach params
     let mut ap = AttachParams::default();
@@ -37,12 +37,43 @@ pub async fn run_exec(
 
     if args.tty {
         ap = ap.tty(true);
+        // When TTY is enabled, stderr is multiplexed into stdout
+        ap = ap.stdout(true).stderr(false);
+    } else {
+        ap = ap.stdout(true).stderr(true);
     }
 
-    ap = ap.stdout(true).stderr(true);
+    // Execute command with better error handling
+    let attached = match api.exec(&args.pod, &args.command, &ap).await {
+        Ok(attached) => attached,
+        Err(e) => {
+            // Check if this is a 404 Not Found error
+            if is_not_found_error(&e) {
+                // Try to find similar pods in other namespaces
+                let suggestions = find_similar_pods(&client, &args.pod, ns).await;
 
-    // Execute command
-    let mut attached = api.exec(&args.pod, &args.command, &ap).await?;
+                let mut error_msg = format!(
+                    "Pod '{}' not found in namespace '{}'.",
+                    args.pod, ns
+                );
+
+                if !suggestions.is_empty() {
+                    error_msg.push_str("\n\nDid you mean one of these?\n");
+                    for (pod_name, pod_ns) in &suggestions {
+                        error_msg.push_str(&format!("  - {} (namespace: {})\n", pod_name, pod_ns));
+                        error_msg.push_str(&format!("    Run: kc exec -n {} {} -- <command>\n", pod_ns, pod_name));
+                    }
+                } else {
+                    error_msg.push_str("\n\nTip: Use `kc pods -A` to list pods in all namespaces.");
+                }
+
+                return Err(KcError::InvalidArgument(error_msg));
+            }
+            return Err(e.into());
+        }
+    };
+
+    let mut attached = attached;
 
     // Handle I/O streams using async read
     let stdout = attached.stdout();
@@ -133,4 +164,86 @@ pub async fn run_exec(
         .map_err(|e| KcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
 
     Ok(())
+}
+
+/// Check if an error is a 404 Not Found error
+fn is_not_found_error(e: &kube::Error) -> bool {
+    match e {
+        kube::Error::Api(api_err) => api_err.code == 404,
+        kube::Error::UpgradeConnection(upgrade_err) => {
+            // Check the error message for 404
+            let msg = upgrade_err.to_string().to_lowercase();
+            msg.contains("404") || msg.contains("not found")
+        }
+        _ => false,
+    }
+}
+
+/// Find pods with similar names in other namespaces
+async fn find_similar_pods(
+    client: &kube::Client,
+    pod_name: &str,
+    current_ns: &str,
+) -> Vec<(String, String)> {
+    let mut suggestions = Vec::new();
+
+    // Search all namespaces for pods with similar names
+    let all_pods: Api<Pod> = Api::all(client.clone());
+
+    if let Ok(pod_list) = all_pods.list(&ListParams::default()).await {
+        let pod_name_lower = pod_name.to_lowercase();
+
+        for pod in pod_list.items {
+            let name = pod.metadata.name.as_deref().unwrap_or("");
+            let ns = pod.metadata.namespace.as_deref().unwrap_or("default");
+
+            // Skip pods in the current namespace (we already know it's not there)
+            if ns == current_ns {
+                continue;
+            }
+
+            // Check for exact match or similar names
+            let name_lower = name.to_lowercase();
+            if name_lower == pod_name_lower
+                || name_lower.contains(&pod_name_lower)
+                || pod_name_lower.contains(&name_lower)
+                || string_similarity(&name_lower, &pod_name_lower) > 0.6
+            {
+                suggestions.push((name.to_string(), ns.to_string()));
+
+                // Limit to 5 suggestions
+                if suggestions.len() >= 5 {
+                    break;
+                }
+            }
+        }
+    }
+
+    // Sort by exact matches first, then by similarity
+    suggestions.sort_by(|a, b| {
+        let a_exact = a.0.to_lowercase() == pod_name.to_lowercase();
+        let b_exact = b.0.to_lowercase() == pod_name.to_lowercase();
+        b_exact.cmp(&a_exact)
+    });
+
+    suggestions
+}
+
+/// Simple string similarity (Jaccard-like) for fuzzy matching
+fn string_similarity(a: &str, b: &str) -> f64 {
+    if a == b {
+        return 1.0;
+    }
+
+    let a_chars: std::collections::HashSet<char> = a.chars().collect();
+    let b_chars: std::collections::HashSet<char> = b.chars().collect();
+
+    let intersection = a_chars.intersection(&b_chars).count();
+    let union = a_chars.union(&b_chars).count();
+
+    if union == 0 {
+        0.0
+    } else {
+        intersection as f64 / union as f64
+    }
 }
