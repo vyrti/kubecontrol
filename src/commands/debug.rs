@@ -60,7 +60,7 @@ pub async fn run_debug(
             debug::cluster::debug_cluster(&client).await?
         }
         DebugCommand::Eks => {
-            debug::eks::debug_eks(&client, namespace).await?
+            debug::aws::debug_eks(&client, namespace).await?
         }
         DebugCommand::Gke => {
             debug::gcp::debug_gke(&client, namespace).await?

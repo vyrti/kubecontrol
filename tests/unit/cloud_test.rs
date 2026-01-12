@@ -1024,7 +1024,7 @@ fn test_distribution_json_serialization_lke() {
 // EKS detection tests
 // ============================================================================
 
-use kubecontrol::debug::eks::is_eks;
+use kubecontrol::debug::aws::is_eks;
 
 #[test]
 fn test_is_eks_with_nodegroup_label() {

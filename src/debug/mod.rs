@@ -18,9 +18,11 @@ pub mod ingress;
 pub mod cluster;
 pub mod report;
 pub mod cloud;
+
+// Cloud provider debug modules (refactored into directories)
+pub mod aws;
 pub mod gcp;
 pub mod azure;
-pub mod eks;
 
 pub use types::*;
 pub use report::*;
@@ -90,8 +92,8 @@ pub async fn debug_all(
         let node_items = node_list.items;
 
         // EKS-specific checks
-        if eks::is_eks(&node_items) {
-            if let Ok(report) = eks::debug_eks(client, namespace).await {
+        if aws::is_eks(&node_items) {
+            if let Ok(report) = aws::debug_eks(client, namespace).await {
                 all_issues.extend(report.issues);
             }
         }
