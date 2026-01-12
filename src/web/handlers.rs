@@ -43,6 +43,13 @@ pub struct ListQuery {
     pub selector: Option<String>,
 }
 
+/// Query parameters for debug node endpoint
+#[derive(Debug, Deserialize)]
+pub struct DebugNodeQuery {
+    /// Run deep SRE-level diagnostics
+    pub deep: Option<bool>,
+}
+
 /// Pod summary for API response
 #[derive(Debug, Serialize)]
 pub struct PodSummary {
@@ -1999,10 +2006,17 @@ pub async fn debug_pod(
 pub async fn debug_node(
     State(state): State<AppState>,
     Path(name): Path<String>,
+    Query(query): Query<DebugNodeQuery>,
 ) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
     let client = state.client.read().await;
 
-    match crate::debug::node::debug_node(&client, &name).await {
+    let result = if query.deep.unwrap_or(false) {
+        crate::debug::node::debug_node_deep(&client, &name).await
+    } else {
+        crate::debug::node::debug_node(&client, &name).await
+    };
+
+    match result {
         Ok(report) => Ok(Json(report)),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     }
@@ -2119,6 +2133,44 @@ pub async fn debug_all(
     let client = state.client.read().await;
 
     match crate::debug::debug_all(&client, query.namespace.as_deref()).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Get cluster information (version, platform, cloud provider)
+pub async fn get_cluster_info(
+    State(state): State<AppState>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::cloud::get_cluster_info(&client).await {
+        Ok(info) => Ok(Json(info)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug GKE-specific issues
+pub async fn debug_gke(
+    State(state): State<AppState>,
+    Query(query): Query<DebugQuery>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::gcp::debug_gke(&client, query.namespace.as_deref()).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug AKS-specific issues
+pub async fn debug_aks(
+    State(state): State<AppState>,
+    Query(query): Query<DebugQuery>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::azure::debug_aks(&client, query.namespace.as_deref()).await {
         Ok(report) => Ok(Json(report)),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     }

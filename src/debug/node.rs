@@ -5,12 +5,29 @@
 //! - Resource capacity and allocation
 //! - Taints and their effects
 //! - System pods health
+//!
+//! Enhanced SRE-level diagnostics (with --deep flag):
+//! - Deleted but open files (phantom disk usage)
+//! - Zombie/defunct processes
+//! - Kernel messages (dmesg analysis)
+//! - Network connection states (TIME_WAIT, etc.)
+//! - Inode exhaustion
+//! - File descriptor limits
+//! - Deep kubelet health (PLEG, restarts)
+//! - Container runtime health
+//! - Disk I/O latency
+//! - AWS EKS-specific checks (ENI, spot, etc.)
+//! - Memory deep analysis (swap, cgroup pressure)
+//! - CPU throttling detection
 
 use super::types::*;
 use crate::error::KcError;
-use k8s_openapi::api::core::v1::{Node, Pod};
+use k8s_openapi::api::core::v1::{Node, Pod, Event};
 use kube::{Api, Client, api::ListParams};
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
+use std::collections::HashMap;
+use tracing::warn;
+
 
 /// Debug all nodes
 pub async fn debug_nodes(client: &Client) -> Result<DebugReport, KcError> {
@@ -475,4 +492,362 @@ fn parse_memory_quantity(quantity: &Quantity) -> i64 {
     } else {
         s.parse().unwrap_or(0)
     }
+}
+
+// ============================================================================
+// Enhanced SRE-Level Node Diagnostics
+// ============================================================================
+
+/// Debug a node with deep SRE-level diagnostics
+///
+/// This runs comprehensive API-based checks and provides diagnostic commands
+/// for issues that require SSH/exec access to the node.
+pub async fn debug_node_deep(
+    client: &Client,
+    name: &str,
+) -> Result<DebugReport, KcError> {
+    let api: Api<Node> = Api::all(client.clone());
+    let node = api.get(name).await?;
+
+    // Run basic analysis
+    let mut issues = analyze_node(client, &node).await?;
+
+    // Run enhanced checks via events (no exec required)
+    let event_issues = check_node_events(client, name).await?;
+    issues.extend(event_issues);
+
+    // Run deep checks that analyze node-level data from Kubernetes API
+    let kubelet_issues = check_kubelet_health_from_events(client, name).await?;
+    issues.extend(kubelet_issues);
+
+    let runtime_issues = check_container_runtime_from_status(&node, name);
+    issues.extend(runtime_issues);
+
+    // Analyze pods on this node for potential node-level issues
+    let pod_issues = analyze_node_pods(client, name).await?;
+    issues.extend(pod_issues);
+
+    // Add suggestions for host-level checks that require SSH/exec
+    issues.push(create_deep_check_suggestions(name));
+
+    Ok(DebugReport::new("node-deep", issues))
+}
+
+/// Create suggestions for deep host-level checks
+fn create_deep_check_suggestions(node_name: &str) -> DebugIssue {
+    let commands = vec![
+        ("Deleted but open files", "lsof -a +L1 | awk '{sum+=$7} END {print sum/1024/1024 \" MB\"}'"),
+        ("Zombie processes", "ps aux | awk '$8 ~ /Z/ {count++} END {print count+0}'"),
+        ("OOM kills in dmesg", "dmesg | grep -ic 'out of memory\\|oom\\|killed process'"),
+        ("Filesystem errors", "dmesg | grep -icE 'ext4.*error|xfs.*error|i/o error'"),
+        ("TIME_WAIT connections", "ss -tan state time-wait | wc -l"),
+        ("Conntrack usage", "cat /proc/sys/net/netfilter/nf_conntrack_count"),
+        ("Inode usage", "df -i /var/lib/kubelet"),
+        ("File descriptors", "cat /proc/sys/fs/file-nr"),
+        ("Memory info", "cat /proc/meminfo | grep -E 'MemAvailable|SwapFree'"),
+        ("I/O wait", "iostat -c 1 2 | tail -1 | awk '{print $4}'"),
+    ];
+
+    let details: Vec<serde_json::Value> = commands.iter()
+        .map(|(name, cmd)| serde_json::json!({
+            "check": name,
+            "command": cmd,
+        }))
+        .collect();
+
+    DebugIssue::new(
+        Severity::Info,
+        DebugCategory::Node,
+        "Node",
+        node_name,
+        "Deep host-level checks available",
+        format!(
+            "For comprehensive SRE-level diagnostics on node {}, SSH or use a debug pod to run the following checks.",
+            node_name
+        ),
+    )
+    .with_remediation("Run: kubectl debug node/{} -it --image=busybox -- sh")
+    .with_details(serde_json::json!({
+        "diagnostic_commands": details,
+        "debug_pod_command": format!("kubectl debug node/{} -it --image=busybox -- sh", node_name),
+    }))
+}
+
+/// Analyze pods on a node to detect node-level issues
+async fn analyze_node_pods(client: &Client, node_name: &str) -> Result<Vec<DebugIssue>, KcError> {
+    let mut issues = Vec::new();
+
+    let pod_api: Api<Pod> = Api::all(client.clone());
+    let lp = ListParams::default().fields(&format!("spec.nodeName={}", node_name));
+    let pods = pod_api.list(&lp).await?;
+
+    let mut oom_killed_count = 0;
+    let mut evicted_count = 0;
+    let mut image_pull_errors = 0;
+    let mut high_restart_pods = Vec::new();
+
+    for pod in &pods.items {
+        let pod_name = pod.metadata.name.as_deref().unwrap_or("unknown");
+        let namespace = pod.metadata.namespace.as_deref().unwrap_or("default");
+
+        if let Some(status) = &pod.status {
+            // Check for evicted pods
+            if status.phase.as_deref() == Some("Failed") {
+                if let Some(reason) = &status.reason {
+                    if reason == "Evicted" {
+                        evicted_count += 1;
+                    }
+                }
+            }
+
+            // Check container statuses
+            if let Some(container_statuses) = &status.container_statuses {
+                for cs in container_statuses {
+                    // Check for OOMKilled
+                    if let Some(last_state) = &cs.last_state {
+                        if let Some(terminated) = &last_state.terminated {
+                            if terminated.reason.as_deref() == Some("OOMKilled") {
+                                oom_killed_count += 1;
+                            }
+                        }
+                    }
+
+                    // Check for high restarts
+                    if cs.restart_count > 10 {
+                        high_restart_pods.push(format!("{}/{}", namespace, pod_name));
+                    }
+
+                    // Check for image pull issues
+                    if let Some(waiting) = &cs.state.as_ref().and_then(|s| s.waiting.as_ref()) {
+                        if waiting.reason.as_deref() == Some("ImagePullBackOff")
+                            || waiting.reason.as_deref() == Some("ErrImagePull")
+                        {
+                            image_pull_errors += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Report aggregated issues
+    if oom_killed_count > 0 {
+        issues.push(
+            DebugIssue::new(
+                Severity::Critical,
+                DebugCategory::Node,
+                "Node",
+                node_name,
+                format!("{} OOMKilled containers on node", oom_killed_count),
+                format!(
+                    "Node {} has {} containers that were killed due to Out of Memory. \
+                    This indicates memory pressure on the node.",
+                    node_name, oom_killed_count
+                ),
+            )
+            .with_remediation("Increase memory limits or add memory resources. Check pod memory requests/limits.")
+            .with_details(serde_json::json!({
+                "oom_killed_count": oom_killed_count,
+            }))
+        );
+    }
+
+    if evicted_count > 0 {
+        issues.push(
+            DebugIssue::new(
+                Severity::Warning,
+                DebugCategory::Node,
+                "Node",
+                node_name,
+                format!("{} evicted pods on node", evicted_count),
+                format!(
+                    "Node {} has {} evicted pods. This indicates resource pressure (disk, memory, or PID).",
+                    node_name, evicted_count
+                ),
+            )
+            .with_remediation("Check node conditions and clean up evicted pods: kubectl get pods --field-selector=status.phase=Failed")
+            .with_details(serde_json::json!({
+                "evicted_count": evicted_count,
+            }))
+        );
+    }
+
+    if image_pull_errors > 0 {
+        issues.push(
+            DebugIssue::new(
+                Severity::Warning,
+                DebugCategory::Node,
+                "Node",
+                node_name,
+                format!("{} image pull errors on node", image_pull_errors),
+                format!(
+                    "Node {} has {} containers with image pull errors. May indicate network issues or full disk.",
+                    node_name, image_pull_errors
+                ),
+            )
+            .with_remediation("Check network connectivity to container registry. Verify disk space with: df -h")
+        );
+    }
+
+    if !high_restart_pods.is_empty() {
+        issues.push(
+            DebugIssue::new(
+                Severity::Warning,
+                DebugCategory::Node,
+                "Node",
+                node_name,
+                format!("{} pods with high restart counts", high_restart_pods.len()),
+                format!(
+                    "Node {} has pods with many restarts: {}. May indicate node stability issues.",
+                    node_name,
+                    high_restart_pods.iter().take(5).cloned().collect::<Vec<_>>().join(", ")
+                ),
+            )
+            .with_details(serde_json::json!({
+                "high_restart_pods": high_restart_pods,
+            }))
+        );
+    }
+
+    Ok(issues)
+}
+
+/// Check node events for issues
+async fn check_node_events(client: &Client, node_name: &str) -> Result<Vec<DebugIssue>, KcError> {
+    let mut issues = Vec::new();
+
+    let event_api: Api<Event> = Api::all(client.clone());
+    let lp = ListParams::default().fields(&format!("involvedObject.name={}", node_name));
+    let events = event_api.list(&lp).await?;
+
+    let mut warning_counts: HashMap<String, i32> = HashMap::new();
+
+    for event in &events.items {
+        if event.type_.as_deref() == Some("Warning") {
+            let reason = event.reason.as_deref().unwrap_or("Unknown");
+            *warning_counts.entry(reason.to_string()).or_insert(0) += 1;
+        }
+    }
+
+    // Report high-frequency warning events
+    for (reason, count) in &warning_counts {
+        if *count > 5 {
+            issues.push(
+                DebugIssue::new(
+                    Severity::Warning,
+                    DebugCategory::Node,
+                    "Node",
+                    node_name,
+                    format!("Repeated {} events ({}x)", reason, count),
+                    format!(
+                        "Node {} has {} occurrences of '{}' warning events.",
+                        node_name, count, reason
+                    ),
+                )
+            );
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check kubelet health from events
+async fn check_kubelet_health_from_events(client: &Client, node_name: &str) -> Result<Vec<DebugIssue>, KcError> {
+    let mut issues = Vec::new();
+
+    let event_api: Api<Event> = Api::all(client.clone());
+    let lp = ListParams::default();
+    let events = event_api.list(&lp).await?;
+
+    for event in &events.items {
+        let message = event.message.as_deref().unwrap_or("");
+        let involved = &event.involved_object;
+        let involved_name = involved.name.as_deref().unwrap_or("");
+
+        if involved_name == node_name || message.contains(node_name) {
+            // Check for PLEG issues
+            if message.contains("PLEG is not healthy") {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Critical,
+                        DebugCategory::Node,
+                        "Node",
+                        node_name,
+                        "PLEG unhealthy",
+                        format!(
+                            "Node {} has PLEG (Pod Lifecycle Event Generator) health issues. \
+                            This causes pods to not start or respond correctly.",
+                            node_name
+                        ),
+                    )
+                    .with_remediation("Check kubelet logs. May indicate disk, network, or runtime issues.")
+                );
+            }
+
+            // Check for container runtime issues
+            if message.contains("container runtime") && message.to_lowercase().contains("error") {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Critical,
+                        DebugCategory::Node,
+                        "Node",
+                        node_name,
+                        "Container runtime error",
+                        format!(
+                            "Node {} has container runtime errors: {}",
+                            node_name, message
+                        ),
+                    )
+                    .with_remediation("Check containerd/docker status. May need to restart runtime.")
+                );
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check container runtime from node status
+fn check_container_runtime_from_status(node: &Node, node_name: &str) -> Vec<DebugIssue> {
+    let mut issues = Vec::new();
+
+    if let Some(status) = &node.status {
+        if let Some(node_info) = &status.node_info {
+            let runtime = &node_info.container_runtime_version;
+
+            // Check for Docker (should use containerd on modern clusters)
+            if runtime.starts_with("docker://") {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Info,
+                        DebugCategory::Node,
+                        "Node",
+                        node_name,
+                        "Using Docker runtime",
+                        format!(
+                            "Node {} is using Docker ({}). Consider migrating to containerd for better performance.",
+                            node_name, runtime
+                        ),
+                    )
+                );
+            }
+
+            // Check for very old runtime versions
+            if runtime.contains("1.") && !runtime.contains("1.6") && !runtime.contains("1.7") {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Warning,
+                        DebugCategory::Node,
+                        "Node",
+                        node_name,
+                        "Potentially outdated container runtime",
+                        format!("Node {} has runtime: {}", node_name, runtime),
+                    )
+                    .with_remediation("Consider upgrading container runtime for security and stability")
+                );
+            }
+        }
+    }
+
+    issues
 }

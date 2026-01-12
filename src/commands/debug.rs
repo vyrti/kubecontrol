@@ -27,7 +27,11 @@ pub async fn run_debug(
             debug::pod::debug_pod(&client, ns, &pod_args.name).await?
         }
         DebugCommand::Node(node_args) => {
-            debug::node::debug_node(&client, &node_args.name).await?
+            if node_args.deep {
+                debug::node::debug_node_deep(&client, &node_args.name).await?
+            } else {
+                debug::node::debug_node(&client, &node_args.name).await?
+            }
         }
         DebugCommand::Deployment(deploy_args) => {
             let ns = namespace.unwrap_or("default");

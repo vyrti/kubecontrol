@@ -142,6 +142,11 @@ pub enum Command {
     // === Debugging ===
     /// Debug cluster, resources, and connectivity
     Debug(DebugArgs),
+
+    // === Version ===
+    /// Show cluster version and platform information
+    #[command(alias = "v")]
+    Version(VersionArgs),
 }
 
 #[derive(Args, Clone)]
@@ -423,6 +428,10 @@ pub struct DebugPodArgs {
 pub struct DebugNodeArgs {
     /// Node name to debug
     pub name: String,
+
+    /// Run deep SRE-level diagnostics (analyzes OOMKilled containers, evicted pods, etc.)
+    #[arg(long)]
+    pub deep: bool,
 }
 
 #[derive(Args)]
@@ -448,4 +457,15 @@ pub struct DebugEventsArgs {
 pub struct DebugIngressArgs {
     /// Ingress name to debug (omit to check all)
     pub name: Option<String>,
+}
+
+#[derive(Args)]
+pub struct VersionArgs {
+    /// Show extended cluster information
+    #[arg(long)]
+    pub extended: bool,
+
+    /// Show client version only
+    #[arg(long)]
+    pub client: bool,
 }

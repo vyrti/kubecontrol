@@ -737,3 +737,50 @@ fn test_output_format_debug() {
     let debug = format!("{:?}", format);
     assert_eq!(debug, "Yaml");
 }
+
+// ============================================================================
+// Version command tests
+// ============================================================================
+
+#[test]
+fn test_parse_version_command() {
+    let args = Cli::parse_from(["kc", "version"]);
+    assert!(matches!(args.command, Command::Version(_)));
+}
+
+#[test]
+fn test_parse_version_alias_v() {
+    let args = Cli::parse_from(["kc", "v"]);
+    assert!(matches!(args.command, Command::Version(_)));
+}
+
+#[test]
+fn test_parse_version_extended() {
+    let args = Cli::parse_from(["kc", "version", "--extended"]);
+    if let Command::Version(version_args) = args.command {
+        assert!(version_args.extended);
+    } else {
+        panic!("Expected Version command");
+    }
+}
+
+#[test]
+fn test_parse_version_client() {
+    let args = Cli::parse_from(["kc", "version", "--client"]);
+    if let Command::Version(version_args) = args.command {
+        assert!(version_args.client);
+    } else {
+        panic!("Expected Version command");
+    }
+}
+
+#[test]
+fn test_parse_version_both_flags() {
+    let args = Cli::parse_from(["kc", "version", "--extended", "--client"]);
+    if let Command::Version(version_args) = args.command {
+        assert!(version_args.extended);
+        assert!(version_args.client);
+    } else {
+        panic!("Expected Version command");
+    }
+}

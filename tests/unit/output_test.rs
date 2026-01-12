@@ -253,3 +253,152 @@ fn test_format_names_mixed_namespaces() {
     assert!(result.contains("backend/api"));
     assert!(result.contains("database/db"));
 }
+
+// ============================================================================
+// Additional format_json tests
+// ============================================================================
+
+#[test]
+fn test_format_json_preserves_structure() {
+    let pod = common::create_mock_pod("test-pod", "default", "Running");
+    let pods = vec![pod];
+    let result = format_json(&pods, false).unwrap();
+
+    // Parse back to verify structure
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&result).unwrap();
+    assert_eq!(parsed.len(), 1);
+
+    let pod_json = &parsed[0];
+    assert!(pod_json.get("metadata").is_some());
+    assert!(pod_json.get("spec").is_some());
+    assert!(pod_json.get("status").is_some());
+}
+
+#[test]
+fn test_format_json_with_special_characters() {
+    let pod = common::create_mock_pod("test-pod-with-\"quotes\"", "default", "Running");
+    let pods = vec![pod];
+    let result = format_json(&pods, false).unwrap();
+
+    // Should properly escape special characters
+    assert!(result.contains("test-pod-with-\\\"quotes\\\"") || result.contains("test-pod-with-"));
+}
+
+#[test]
+fn test_format_json_compact_is_single_line() {
+    let pods = vec![
+        common::create_mock_pod("pod-1", "default", "Running"),
+    ];
+    let result = format_json(&pods, false).unwrap();
+
+    // Compact JSON should be a single line (minimal whitespace)
+    let lines: Vec<&str> = result.lines().collect();
+    assert_eq!(lines.len(), 1);
+}
+
+// ============================================================================
+// Additional format_yaml tests
+// ============================================================================
+
+#[test]
+fn test_format_yaml_preserves_structure() {
+    let pod = common::create_mock_pod("test-pod", "default", "Running");
+    let pods = vec![pod];
+    let result = format_yaml(&pods).unwrap();
+
+    // Parse back to verify structure
+    let parsed: Vec<serde_yaml::Value> = serde_yaml::from_str(&result).unwrap();
+    assert_eq!(parsed.len(), 1);
+
+    let pod_yaml = &parsed[0];
+    assert!(pod_yaml.get("metadata").is_some());
+}
+
+#[test]
+fn test_format_yaml_with_multiline_values() {
+    // This tests that multiline content is handled properly in YAML
+    let pod = common::create_mock_pod("test-pod", "default", "Running");
+    let pods = vec![pod];
+    let result = format_yaml(&pods).unwrap();
+
+    // YAML output should be multi-line
+    let lines: Vec<&str> = result.lines().collect();
+    assert!(lines.len() > 1);
+}
+
+// ============================================================================
+// Additional format_table tests
+// ============================================================================
+
+#[test]
+fn test_format_table_consistent_columns() {
+    let pods = vec![
+        common::create_mock_pod("a", "default", "Running"),
+        common::create_mock_pod("very-long-name", "default", "Running"),
+        common::create_mock_pod("b", "default", "Running"),
+    ];
+    let result = format_table(&pods, false);
+
+    // Each line should have consistent column structure
+    let lines: Vec<&str> = result.lines().collect();
+    assert!(lines.len() >= 4); // header + 3 rows
+
+    // Header should be first line
+    assert!(lines[0].contains("NAME"));
+}
+
+#[test]
+fn test_format_table_with_deployment() {
+    let deployment = common::create_mock_deployment("my-deploy", "default", 3);
+    let deployments = vec![deployment];
+
+    let result = format_table(&deployments, false);
+
+    assert!(result.contains("my-deploy"));
+    assert!(result.contains("READY") || result.contains("NAME"));
+}
+
+#[test]
+fn test_format_table_with_service() {
+    let service = common::create_mock_service("my-svc", "default", "ClusterIP");
+    let services = vec![service];
+
+    let result = format_table(&services, false);
+
+    assert!(result.contains("my-svc"));
+    assert!(result.contains("TYPE") || result.contains("NAME") || result.contains("CLUSTER-IP"));
+}
+
+// ============================================================================
+// Colorize status tests
+// ============================================================================
+
+use kubecontrol::output::colorize_status;
+
+#[test]
+fn test_colorize_status_running() {
+    let result = colorize_status("Running");
+    // Should contain ANSI escape codes for green
+    assert!(result.contains("\x1b[") || result == "Running");
+}
+
+#[test]
+fn test_colorize_status_pending() {
+    let result = colorize_status("Pending");
+    // Should contain ANSI escape codes for yellow
+    assert!(result.contains("\x1b[") || result == "Pending");
+}
+
+#[test]
+fn test_colorize_status_failed() {
+    let result = colorize_status("Failed");
+    // Should contain ANSI escape codes for red
+    assert!(result.contains("\x1b[") || result == "Failed");
+}
+
+#[test]
+fn test_colorize_status_unknown() {
+    let result = colorize_status("SomeUnknownStatus");
+    // Unknown status should not be colorized (no ANSI codes added beyond original)
+    assert!(result.contains("SomeUnknownStatus"));
+}

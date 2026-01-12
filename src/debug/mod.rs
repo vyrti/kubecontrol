@@ -17,6 +17,9 @@ pub mod resources;
 pub mod ingress;
 pub mod cluster;
 pub mod report;
+pub mod cloud;
+pub mod gcp;
+pub mod azure;
 
 pub use types::*;
 pub use report::*;

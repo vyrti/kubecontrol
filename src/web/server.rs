@@ -103,6 +103,11 @@ pub async fn start_server(port: u16, context: Option<String>, namespace: Option<
         .route("/api/debug/ingress", get(handlers::debug_ingress))
         .route("/api/debug/cluster", get(handlers::debug_cluster))
         .route("/api/debug/all", get(handlers::debug_all))
+        .route("/api/debug/gke", get(handlers::debug_gke))
+        .route("/api/debug/aks", get(handlers::debug_aks))
+
+        // === Cluster Info endpoint ===
+        .route("/api/cluster/info", get(handlers::get_cluster_info))
 
         // === Context endpoints ===
         .route("/api/contexts", get(handlers::list_contexts_handler))

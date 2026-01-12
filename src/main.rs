@@ -177,6 +177,9 @@ async fn main() -> Result<()> {
             )
             .await
         }
+        Command::Version(ref args) => {
+            commands::run_version(cli.context.as_deref(), args, output).await
+        }
     };
 
     if let Err(e) = result {
