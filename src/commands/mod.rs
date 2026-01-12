@@ -1,11 +1,31 @@
 //! Command implementations
 
-pub mod list;
+pub mod apply;
 pub mod context;
 pub mod debug;
+pub mod delete;
+pub mod describe;
+pub mod exec;
+pub mod get;
+pub mod list;
+pub mod logs;
+pub mod portforward;
+pub mod restart;
+pub mod scale;
+pub mod shell;
 pub mod version;
 
-pub use list::*;
+pub use apply::*;
 pub use context::*;
 pub use debug::*;
+pub use delete::*;
+pub use describe::*;
+pub use exec::*;
+pub use get::*;
+pub use list::*;
+pub use logs::*;
+pub use portforward::*;
+pub use restart::*;
+pub use scale::*;
+pub use shell::*;
 pub use version::*;

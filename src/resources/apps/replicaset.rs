@@ -1,7 +1,7 @@
 //! ReplicaSet resource implementation
 
 use crate::error::Result;
-use crate::resources::{KubeResource, Listable, Scalable, Tabular};
+use crate::resources::{Describable, KubeResource, Listable, Scalable, Tabular};
 use async_trait::async_trait;
 use k8s_openapi::api::apps::v1::ReplicaSet;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -97,5 +97,35 @@ impl Scalable for ReplicaSet {
         api.patch(name, &PatchParams::default(), &Patch::Merge(&patch))
             .await?;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Describable for ReplicaSet {
+    async fn describe(&self, _client: &Client) -> Result<String> {
+        let mut output = String::new();
+
+        output.push_str(&format!("Name:               {}\n", self.name()));
+        output.push_str(&format!(
+            "Namespace:          {}\n",
+            self.namespace().unwrap_or("<none>")
+        ));
+
+        if let Some(spec) = &self.spec {
+            output.push_str(&format!(
+                "Replicas:           {} desired\n",
+                spec.replicas.unwrap_or(1)
+            ));
+        }
+
+        if let Some(status) = &self.status {
+            output.push_str(&format!("Current Replicas:   {}\n", status.replicas));
+            output.push_str(&format!(
+                "Ready Replicas:     {}\n",
+                status.ready_replicas.unwrap_or(0)
+            ));
+        }
+
+        Ok(output)
     }
 }

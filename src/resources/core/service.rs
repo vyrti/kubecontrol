@@ -1,7 +1,7 @@
 //! Service resource implementation
 
 use crate::error::Result;
-use crate::resources::{KubeResource, Listable, Tabular};
+use crate::resources::{Describable, KubeResource, Listable, Tabular};
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::Service;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -137,4 +137,41 @@ fn format_ports(svc: &Service) -> String {
         })
         .collect::<Vec<_>>()
         .join(",")
+}
+
+#[async_trait]
+impl Describable for Service {
+    async fn describe(&self, _client: &Client) -> Result<String> {
+        let mut output = String::new();
+
+        output.push_str(&format!("Name:              {}\n", self.name()));
+        output.push_str(&format!(
+            "Namespace:         {}\n",
+            self.namespace().unwrap_or("<none>")
+        ));
+
+        if let Some(spec) = &self.spec {
+            output.push_str(&format!(
+                "Type:              {}\n",
+                spec.type_.as_deref().unwrap_or("ClusterIP")
+            ));
+            output.push_str(&format!(
+                "Cluster-IP:        {}\n",
+                spec.cluster_ip.as_deref().unwrap_or("<none>")
+            ));
+            output.push_str(&format!("External-IP:       {}\n", external_ips(self)));
+            output.push_str(&format!("Port(s):           {}\n", format_ports(self)));
+
+            if let Some(selector) = &spec.selector {
+                let sel_str = selector
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                output.push_str(&format!("Selector:          {}\n", sel_str));
+            }
+        }
+
+        Ok(output)
+    }
 }

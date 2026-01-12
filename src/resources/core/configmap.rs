@@ -1,7 +1,7 @@
 //! ConfigMap resource implementation
 
 use crate::error::Result;
-use crate::resources::{KubeResource, Listable, Tabular};
+use crate::resources::{Describable, KubeResource, Listable, Tabular};
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::ConfigMap;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -66,5 +66,36 @@ impl Tabular for ConfigMap {
             data_count.to_string(),
             self.age(),
         ]
+    }
+}
+
+#[async_trait]
+impl Describable for ConfigMap {
+    async fn describe(&self, _client: &Client) -> Result<String> {
+        let mut output = String::new();
+
+        output.push_str(&format!("Name:         {}\n", self.name()));
+        output.push_str(&format!(
+            "Namespace:    {}\n",
+            self.namespace().unwrap_or("<none>")
+        ));
+
+        if let Some(data) = &self.data {
+            output.push_str(&format!("\nData:\n"));
+            output.push_str(&format!("====\n"));
+            for (key, value) in data {
+                output.push_str(&format!("{}:\n----\n{}\n\n", key, value));
+            }
+        }
+
+        if let Some(binary_data) = &self.binary_data {
+            output.push_str(&format!("\nBinaryData:\n"));
+            output.push_str(&format!("====\n"));
+            for (key, _) in binary_data {
+                output.push_str(&format!("{}: {} bytes\n", key, binary_data.get(key).map(|d| d.0.len()).unwrap_or(0)));
+            }
+        }
+
+        Ok(output)
     }
 }

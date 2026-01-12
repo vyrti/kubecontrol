@@ -105,49 +105,84 @@ async fn main() -> Result<()> {
             )
             .await
         }
-        Command::Get(ref _args) => {
-            eprintln!("'get' command not yet implemented");
-            Ok(())
+        Command::Get(ref args) => {
+            commands::run_get(
+                cli.context.as_deref(),
+                cli.namespace.as_deref(),
+                args,
+                output,
+            )
+            .await
         }
-        Command::Describe(ref _args) => {
-            eprintln!("'describe' command not yet implemented");
-            Ok(())
+        Command::Describe(ref args) => {
+            commands::run_describe(
+                cli.context.as_deref(),
+                cli.namespace.as_deref(),
+                args,
+            )
+            .await
         }
-        Command::Logs(ref _args) => {
-            eprintln!("'logs' command not yet implemented");
-            Ok(())
+        Command::Logs(ref args) => {
+            commands::run_logs(
+                cli.context.as_deref(),
+                cli.namespace.as_deref(),
+                args,
+            )
+            .await
         }
-        Command::Exec(ref _args) => {
-            eprintln!("'exec' command not yet implemented");
-            Ok(())
+        Command::Exec(ref args) => {
+            commands::run_exec(
+                cli.context.as_deref(),
+                cli.namespace.as_deref(),
+                args,
+            )
+            .await
         }
-        Command::Shell(ref _args) => {
-            eprintln!("'shell' command not yet implemented");
-            Ok(())
+        Command::Shell(ref args) => {
+            commands::run_shell(
+                cli.context.as_deref(),
+                cli.namespace.as_deref(),
+                args,
+            )
+            .await
         }
-        Command::PortForward(ref _args) => {
-            eprintln!("'port-forward' command not yet implemented");
-            Ok(())
+        Command::PortForward(ref args) => {
+            commands::run_port_forward(
+                cli.context.as_deref(),
+                cli.namespace.as_deref(),
+                args,
+            )
+            .await
         }
-        Command::Delete(ref _args) => {
-            eprintln!("'delete' command not yet implemented");
-            Ok(())
+        Command::Delete(ref args) => {
+            commands::run_delete(
+                cli.context.as_deref(),
+                cli.namespace.as_deref(),
+                args,
+            )
+            .await
         }
-        Command::Apply(ref _args) => {
-            eprintln!("'apply' command not yet implemented");
-            Ok(())
+        Command::Apply(ref args) => {
+            commands::run_apply(cli.context.as_deref(), args).await
         }
-        Command::Create(ref _args) => {
-            eprintln!("'create' command not yet implemented");
-            Ok(())
+        Command::Create(ref args) => {
+            commands::run_create(cli.context.as_deref(), args).await
         }
-        Command::Scale(ref _args) => {
-            eprintln!("'scale' command not yet implemented");
-            Ok(())
+        Command::Scale(ref args) => {
+            commands::run_scale(
+                cli.context.as_deref(),
+                cli.namespace.as_deref(),
+                args,
+            )
+            .await
         }
-        Command::Restart(ref _args) => {
-            eprintln!("'restart' command not yet implemented");
-            Ok(())
+        Command::Restart(ref args) => {
+            commands::run_restart(
+                cli.context.as_deref(),
+                cli.namespace.as_deref(),
+                args,
+            )
+            .await
         }
         Command::Context(ref args) => {
             commands::handle_context(args.name.as_deref(), output)

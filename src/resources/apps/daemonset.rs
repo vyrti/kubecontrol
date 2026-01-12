@@ -1,7 +1,7 @@
 //! DaemonSet resource implementation
 
 use crate::error::Result;
-use crate::resources::{KubeResource, Listable, Rollable, Tabular};
+use crate::resources::{Describable, KubeResource, Listable, Rollable, Tabular};
 use async_trait::async_trait;
 use k8s_openapi::api::apps::v1::DaemonSet;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -123,5 +123,34 @@ impl Rollable for DaemonSet {
         } else {
             format!("daemon set \"{}\" successfully rolled out", self.name())
         }
+    }
+}
+
+#[async_trait]
+impl Describable for DaemonSet {
+    async fn describe(&self, _client: &Client) -> Result<String> {
+        let mut output = String::new();
+
+        output.push_str(&format!("Name:               {}\n", self.name()));
+        output.push_str(&format!(
+            "Namespace:          {}\n",
+            self.namespace().unwrap_or("<none>")
+        ));
+
+        if let Some(status) = &self.status {
+            output.push_str(&format!("Desired:            {}\n", status.desired_number_scheduled));
+            output.push_str(&format!("Current:            {}\n", status.current_number_scheduled));
+            output.push_str(&format!("Ready:              {}\n", status.number_ready));
+            output.push_str(&format!(
+                "Up-to-date:         {}\n",
+                status.updated_number_scheduled.unwrap_or(0)
+            ));
+            output.push_str(&format!(
+                "Available:          {}\n",
+                status.number_available.unwrap_or(0)
+            ));
+        }
+
+        Ok(output)
     }
 }

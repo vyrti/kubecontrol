@@ -1,7 +1,7 @@
 //! Node resource implementation
 
 use crate::error::Result;
-use crate::resources::{KubeResource, Listable, Tabular};
+use crate::resources::{Describable, KubeResource, Listable, Tabular};
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::Node;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -164,4 +164,41 @@ fn os_image(node: &Node) -> Option<String> {
         .as_ref()
         .and_then(|s| s.node_info.as_ref())
         .map(|i| i.os_image.clone())
+}
+
+#[async_trait]
+impl Describable for Node {
+    async fn describe(&self, _client: &Client) -> Result<String> {
+        let mut output = String::new();
+
+        output.push_str(&format!("Name:               {}\n", self.name()));
+        output.push_str(&format!("Roles:              {}\n", roles(self)));
+        output.push_str(&format!("Status:             {}\n", status_string(self)));
+
+        if let Some(status) = &self.status {
+            if let Some(info) = &status.node_info {
+                output.push_str(&format!("Kubelet Version:    {}\n", info.kubelet_version));
+                output.push_str(&format!("OS Image:           {}\n", info.os_image));
+                output.push_str(&format!("Operating System:   {}\n", info.operating_system));
+                output.push_str(&format!("Architecture:       {}\n", info.architecture));
+                output.push_str(&format!("Container Runtime:  {}\n", info.container_runtime_version));
+            }
+
+            if let Some(addresses) = &status.addresses {
+                output.push_str("\nAddresses:\n");
+                for addr in addresses {
+                    output.push_str(&format!("  {}: {}\n", addr.type_, addr.address));
+                }
+            }
+
+            if let Some(capacity) = &status.capacity {
+                output.push_str("\nCapacity:\n");
+                for (key, value) in capacity {
+                    output.push_str(&format!("  {}: {}\n", key, value.0));
+                }
+            }
+        }
+
+        Ok(output)
+    }
 }

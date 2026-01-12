@@ -1,7 +1,7 @@
 //! StatefulSet resource implementation
 
 use crate::error::Result;
-use crate::resources::{KubeResource, Listable, Rollable, Scalable, Tabular};
+use crate::resources::{Describable, KubeResource, Listable, Rollable, Scalable, Tabular};
 use async_trait::async_trait;
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -131,5 +131,41 @@ impl Rollable for StatefulSet {
         } else {
             format!("statefulset \"{}\" successfully rolled out", self.name())
         }
+    }
+}
+
+#[async_trait]
+impl Describable for StatefulSet {
+    async fn describe(&self, _client: &Client) -> Result<String> {
+        let mut output = String::new();
+
+        output.push_str(&format!("Name:               {}\n", self.name()));
+        output.push_str(&format!(
+            "Namespace:          {}\n",
+            self.namespace().unwrap_or("<none>")
+        ));
+
+        if let Some(spec) = &self.spec {
+            output.push_str(&format!(
+                "Replicas:           {} desired\n",
+                spec.replicas.unwrap_or(1)
+            ));
+            if let Some(svc) = &spec.service_name {
+                output.push_str(&format!("Service Name:       {}\n", svc));
+            }
+        }
+
+        if let Some(status) = &self.status {
+            output.push_str(&format!(
+                "Ready Replicas:     {}\n",
+                status.ready_replicas.unwrap_or(0)
+            ));
+            output.push_str(&format!(
+                "Current Replicas:   {}\n",
+                status.current_replicas.unwrap_or(0)
+            ));
+        }
+
+        Ok(output)
     }
 }

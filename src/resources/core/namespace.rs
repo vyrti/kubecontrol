@@ -1,7 +1,7 @@
 //! Namespace resource implementation
 
 use crate::error::Result;
-use crate::resources::{KubeResource, Listable, Tabular};
+use crate::resources::{Describable, KubeResource, Listable, Tabular};
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -68,5 +68,37 @@ impl Tabular for Namespace {
         self.status
             .as_ref()
             .and_then(|s| s.phase.as_deref())
+    }
+}
+
+#[async_trait]
+impl Describable for Namespace {
+    async fn describe(&self, _client: &Client) -> Result<String> {
+        let mut output = String::new();
+
+        output.push_str(&format!("Name:         {}\n", self.name()));
+        output.push_str(&format!(
+            "Status:       {}\n",
+            self.status
+                .as_ref()
+                .and_then(|s| s.phase.as_deref())
+                .unwrap_or("Unknown")
+        ));
+
+        if let Some(labels) = &self.metadata.labels {
+            output.push_str("\nLabels:\n");
+            for (key, value) in labels {
+                output.push_str(&format!("  {}={}\n", key, value));
+            }
+        }
+
+        if let Some(annotations) = &self.metadata.annotations {
+            output.push_str("\nAnnotations:\n");
+            for (key, value) in annotations {
+                output.push_str(&format!("  {}={}\n", key, value));
+            }
+        }
+
+        Ok(output)
     }
 }

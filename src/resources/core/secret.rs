@@ -1,7 +1,7 @@
 //! Secret resource implementation
 
 use crate::error::Result;
-use crate::resources::{KubeResource, Listable, Tabular};
+use crate::resources::{Describable, KubeResource, Listable, Tabular};
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::Secret;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -71,5 +71,32 @@ impl Tabular for Secret {
             data_count.to_string(),
             self.age(),
         ]
+    }
+}
+
+#[async_trait]
+impl Describable for Secret {
+    async fn describe(&self, _client: &Client) -> Result<String> {
+        let mut output = String::new();
+
+        output.push_str(&format!("Name:         {}\n", self.name()));
+        output.push_str(&format!(
+            "Namespace:    {}\n",
+            self.namespace().unwrap_or("<none>")
+        ));
+        output.push_str(&format!(
+            "Type:         {}\n",
+            self.type_.as_deref().unwrap_or("Opaque")
+        ));
+
+        if let Some(data) = &self.data {
+            output.push_str(&format!("\nData:\n"));
+            output.push_str(&format!("====\n"));
+            for (key, value) in data {
+                output.push_str(&format!("{}:  {} bytes\n", key, value.0.len()));
+            }
+        }
+
+        Ok(output)
     }
 }
