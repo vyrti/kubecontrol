@@ -168,6 +168,15 @@ async fn main() -> Result<()> {
             )
             .await
         }
+        Command::Debug(ref args) => {
+            commands::run_debug(
+                cli.context.as_deref(),
+                cli.namespace.as_deref(),
+                args,
+                output,
+            )
+            .await
+        }
     };
 
     if let Err(e) = result {

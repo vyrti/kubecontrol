@@ -138,6 +138,10 @@ pub enum Command {
     // === Web UI ===
     /// Start web dashboard
     Ui(UiArgs),
+
+    // === Debugging ===
+    /// Debug cluster, resources, and connectivity
+    Debug(DebugArgs),
 }
 
 #[derive(Args, Clone)]
@@ -345,4 +349,103 @@ pub struct UiArgs {
     /// Don't open browser automatically
     #[arg(long)]
     pub no_open: bool,
+}
+
+#[derive(Args)]
+pub struct DebugArgs {
+    /// Filter by severity level
+    #[arg(long, value_enum)]
+    pub severity: Option<DebugSeverityFilter>,
+
+    #[command(subcommand)]
+    pub command: DebugCommand,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum DebugSeverityFilter {
+    Critical,
+    Warning,
+    Info,
+    All,
+}
+
+#[derive(Subcommand)]
+pub enum DebugCommand {
+    /// Check DNS resolution and CoreDNS health
+    Dns,
+
+    /// Check network connectivity and CNI health
+    Network,
+
+    /// Diagnose pod issues (crashes, OOM, probes)
+    Pod(DebugPodArgs),
+
+    /// Diagnose node issues (conditions, resources, taints)
+    Node(DebugNodeArgs),
+
+    /// Analyze deployment health (replicas, rollouts, HPA)
+    #[command(alias = "deploy")]
+    Deployment(DebugDeploymentArgs),
+
+    /// Check service connectivity and endpoints
+    #[command(alias = "svc")]
+    Service(DebugServiceArgs),
+
+    /// Check storage (PVCs, PVs, StorageClasses, CSI)
+    Storage,
+
+    /// Security audit (privileges, RBAC, secrets)
+    Security,
+
+    /// Analyze resource allocation and quotas
+    Resources,
+
+    /// Correlate and analyze events
+    Events(DebugEventsArgs),
+
+    /// Check ingress configuration and TLS
+    Ingress(DebugIngressArgs),
+
+    /// Check cluster-wide health (control plane, nodes, capacity)
+    Cluster,
+
+    /// Run all debug checks
+    All,
+}
+
+#[derive(Args)]
+pub struct DebugPodArgs {
+    /// Pod name to debug
+    pub name: String,
+}
+
+#[derive(Args)]
+pub struct DebugNodeArgs {
+    /// Node name to debug
+    pub name: String,
+}
+
+#[derive(Args)]
+pub struct DebugDeploymentArgs {
+    /// Deployment name to debug
+    pub name: String,
+}
+
+#[derive(Args)]
+pub struct DebugServiceArgs {
+    /// Service name to debug
+    pub name: String,
+}
+
+#[derive(Args)]
+pub struct DebugEventsArgs {
+    /// Show events from the last duration (e.g., 1h, 30m)
+    #[arg(long)]
+    pub since: Option<String>,
+}
+
+#[derive(Args)]
+pub struct DebugIngressArgs {
+    /// Ingress name to debug (omit to check all)
+    pub name: Option<String>,
 }

@@ -1946,3 +1946,180 @@ pub async fn scan_health(
 
     Ok(Json(HealthScanResponse { issues, summary }))
 }
+
+// =============================================================================
+// Debug Endpoints
+// =============================================================================
+
+/// Debug query parameters
+#[derive(Debug, Deserialize)]
+pub struct DebugQuery {
+    pub namespace: Option<String>,
+    pub severity: Option<String>,
+}
+
+/// Debug DNS health
+pub async fn debug_dns(
+    State(state): State<AppState>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::dns::debug_dns(&client).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug network connectivity
+pub async fn debug_network(
+    State(state): State<AppState>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::network::debug_network(&client).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug pod
+pub async fn debug_pod(
+    State(state): State<AppState>,
+    Path((ns, name)): Path<(String, String)>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::pod::debug_pod(&client, &ns, &name).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug node
+pub async fn debug_node(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::node::debug_node(&client, &name).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug deployment
+pub async fn debug_deployment(
+    State(state): State<AppState>,
+    Path((ns, name)): Path<(String, String)>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::deployment::debug_deployment(&client, &ns, &name).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug service
+pub async fn debug_service(
+    State(state): State<AppState>,
+    Path((ns, name)): Path<(String, String)>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::service::debug_service(&client, &ns, &name).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug storage
+pub async fn debug_storage(
+    State(state): State<AppState>,
+    Query(query): Query<DebugQuery>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::storage::debug_storage(&client, query.namespace.as_deref()).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug security
+pub async fn debug_security(
+    State(state): State<AppState>,
+    Query(query): Query<DebugQuery>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::security::debug_security(&client, query.namespace.as_deref()).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug resources
+pub async fn debug_resources(
+    State(state): State<AppState>,
+    Query(query): Query<DebugQuery>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::resources::debug_resources(&client, query.namespace.as_deref()).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug events
+pub async fn debug_events(
+    State(state): State<AppState>,
+    Query(query): Query<DebugQuery>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::events::debug_events(&client, query.namespace.as_deref()).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug ingress
+pub async fn debug_ingress(
+    State(state): State<AppState>,
+    Query(query): Query<DebugQuery>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::ingress::debug_ingress(&client, query.namespace.as_deref()).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug cluster
+pub async fn debug_cluster(
+    State(state): State<AppState>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::cluster::debug_cluster(&client).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// Debug all - comprehensive scan
+pub async fn debug_all(
+    State(state): State<AppState>,
+    Query(query): Query<DebugQuery>,
+) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
+    let client = state.client.read().await;
+
+    match crate::debug::debug_all(&client, query.namespace.as_deref()).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}

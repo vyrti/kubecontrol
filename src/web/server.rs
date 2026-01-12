@@ -89,6 +89,21 @@ pub async fn start_server(port: u16, context: Option<String>, namespace: Option<
         // === Health scanner endpoint ===
         .route("/api/health/scan", get(handlers::scan_health))
 
+        // === Debug endpoints ===
+        .route("/api/debug/dns", get(handlers::debug_dns))
+        .route("/api/debug/network", get(handlers::debug_network))
+        .route("/api/debug/pod/{ns}/{name}", get(handlers::debug_pod))
+        .route("/api/debug/node/{name}", get(handlers::debug_node))
+        .route("/api/debug/deployment/{ns}/{name}", get(handlers::debug_deployment))
+        .route("/api/debug/service/{ns}/{name}", get(handlers::debug_service))
+        .route("/api/debug/storage", get(handlers::debug_storage))
+        .route("/api/debug/security", get(handlers::debug_security))
+        .route("/api/debug/resources", get(handlers::debug_resources))
+        .route("/api/debug/events", get(handlers::debug_events))
+        .route("/api/debug/ingress", get(handlers::debug_ingress))
+        .route("/api/debug/cluster", get(handlers::debug_cluster))
+        .route("/api/debug/all", get(handlers::debug_all))
+
         // === Context endpoints ===
         .route("/api/contexts", get(handlers::list_contexts_handler))
         .route("/api/context", get(handlers::get_current_context))
