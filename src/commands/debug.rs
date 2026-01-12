@@ -59,6 +59,15 @@ pub async fn run_debug(
         DebugCommand::Cluster => {
             debug::cluster::debug_cluster(&client).await?
         }
+        DebugCommand::Eks => {
+            debug::eks::debug_eks(&client, namespace).await?
+        }
+        DebugCommand::Gke => {
+            debug::gcp::debug_gke(&client, namespace).await?
+        }
+        DebugCommand::Aks => {
+            debug::azure::debug_aks(&client, namespace).await?
+        }
         DebugCommand::All => {
             debug::debug_all(&client, namespace).await?
         }

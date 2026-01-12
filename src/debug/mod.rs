@@ -20,11 +20,13 @@ pub mod report;
 pub mod cloud;
 pub mod gcp;
 pub mod azure;
+pub mod eks;
 
 pub use types::*;
 pub use report::*;
 
-use kube::Client;
+use k8s_openapi::api::core::v1::Node;
+use kube::{api::ListParams, Api, Client};
 use crate::error::KcError;
 
 /// Run all debug checks
@@ -80,6 +82,33 @@ pub async fn debug_all(
     }
     if let Ok(report) = cluster_result {
         all_issues.extend(report.issues);
+    }
+
+    // Run cloud-specific checks based on detected platform
+    let nodes: Api<Node> = Api::all(client.clone());
+    if let Ok(node_list) = nodes.list(&ListParams::default()).await {
+        let node_items = node_list.items;
+
+        // EKS-specific checks
+        if eks::is_eks(&node_items) {
+            if let Ok(report) = eks::debug_eks(client, namespace).await {
+                all_issues.extend(report.issues);
+            }
+        }
+
+        // GKE-specific checks
+        if gcp::is_gke(&node_items) {
+            if let Ok(report) = gcp::debug_gke(client, namespace).await {
+                all_issues.extend(report.issues);
+            }
+        }
+
+        // AKS-specific checks
+        if azure::is_aks(&node_items) {
+            if let Ok(report) = azure::debug_aks(client, namespace).await {
+                all_issues.extend(report.issues);
+            }
+        }
     }
 
     Ok(DebugReport::new("all", all_issues))

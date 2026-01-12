@@ -414,6 +414,15 @@ pub enum DebugCommand {
     /// Check cluster-wide health (control plane, nodes, capacity)
     Cluster,
 
+    /// EKS-specific diagnostics (IRSA, VPC CNI, addons, Pod Identity)
+    Eks,
+
+    /// GKE-specific diagnostics (Workload Identity, Autopilot)
+    Gke,
+
+    /// AKS-specific diagnostics (Managed Identity, CNI, Virtual Nodes)
+    Aks,
+
     /// Run all debug checks
     All,
 }

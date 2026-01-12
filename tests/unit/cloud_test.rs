@@ -747,3 +747,356 @@ fn test_cluster_info_is_not_managed_unknown() {
     let info = create_cluster_info(KubernetesDistribution::Unknown);
     assert!(!info.is_managed());
 }
+
+// ============================================================================
+// New cloud provider display tests (Hetzner, Linode, Civo, Vultr, Scaleway, Exoscale)
+// ============================================================================
+
+#[test]
+fn test_cloud_provider_display_hetzner() {
+    assert_eq!(format!("{}", CloudProvider::Hetzner), "Hetzner Cloud");
+}
+
+#[test]
+fn test_cloud_provider_display_linode() {
+    assert_eq!(format!("{}", CloudProvider::Linode), "Linode (Akamai)");
+}
+
+#[test]
+fn test_cloud_provider_display_civo() {
+    assert_eq!(format!("{}", CloudProvider::Civo), "Civo");
+}
+
+#[test]
+fn test_cloud_provider_display_vultr() {
+    assert_eq!(format!("{}", CloudProvider::Vultr), "Vultr");
+}
+
+#[test]
+fn test_cloud_provider_display_scaleway() {
+    assert_eq!(format!("{}", CloudProvider::Scaleway), "Scaleway");
+}
+
+#[test]
+fn test_cloud_provider_display_exoscale() {
+    assert_eq!(format!("{}", CloudProvider::Exoscale), "Exoscale");
+}
+
+// ============================================================================
+// New cloud provider detection tests (from provider ID)
+// ============================================================================
+
+#[test]
+fn test_detect_hetzner_from_provider_id() {
+    let nodes = vec![create_node_with_provider_id("node-1", "hcloud://12345678")];
+    let provider = detect_cloud_provider(&nodes);
+
+    assert_eq!(provider, Some(CloudProvider::Hetzner));
+}
+
+#[test]
+fn test_detect_linode_from_provider_id() {
+    let nodes = vec![create_node_with_provider_id("node-1", "linode://12345678")];
+    let provider = detect_cloud_provider(&nodes);
+
+    assert_eq!(provider, Some(CloudProvider::Linode));
+}
+
+#[test]
+fn test_detect_civo_from_provider_id() {
+    let nodes = vec![create_node_with_provider_id("node-1", "civo://abc123-def456")];
+    let provider = detect_cloud_provider(&nodes);
+
+    assert_eq!(provider, Some(CloudProvider::Civo));
+}
+
+#[test]
+fn test_detect_vultr_from_provider_id() {
+    let nodes = vec![create_node_with_provider_id("node-1", "vultr://abc123-def456")];
+    let provider = detect_cloud_provider(&nodes);
+
+    assert_eq!(provider, Some(CloudProvider::Vultr));
+}
+
+#[test]
+fn test_detect_scaleway_from_provider_id() {
+    let nodes = vec![create_node_with_provider_id("node-1", "scaleway://instance/fr-par-1/abc123")];
+    let provider = detect_cloud_provider(&nodes);
+
+    assert_eq!(provider, Some(CloudProvider::Scaleway));
+}
+
+#[test]
+fn test_detect_exoscale_from_provider_id() {
+    let nodes = vec![create_node_with_provider_id("node-1", "exoscale://abc123-def456")];
+    let provider = detect_cloud_provider(&nodes);
+
+    assert_eq!(provider, Some(CloudProvider::Exoscale));
+}
+
+// ============================================================================
+// New distribution display tests
+// ============================================================================
+
+#[test]
+fn test_distribution_display_k0s() {
+    assert_eq!(format!("{}", KubernetesDistribution::K0s), "k0s");
+}
+
+#[test]
+fn test_distribution_display_talos() {
+    assert_eq!(format!("{}", KubernetesDistribution::Talos), "Talos Linux");
+}
+
+#[test]
+fn test_distribution_display_tanzu_tkg() {
+    assert_eq!(format!("{}", KubernetesDistribution::TanzuTKG), "VMware Tanzu (TKG)");
+}
+
+#[test]
+fn test_distribution_display_rancher_desktop() {
+    assert_eq!(format!("{}", KubernetesDistribution::RancherDesktop), "Rancher Desktop");
+}
+
+#[test]
+fn test_distribution_display_lke() {
+    assert_eq!(format!("{}", KubernetesDistribution::LKE), "Linode LKE");
+}
+
+#[test]
+fn test_distribution_display_civo_k8s() {
+    assert_eq!(format!("{}", KubernetesDistribution::CivoK8s), "Civo Kubernetes");
+}
+
+#[test]
+fn test_distribution_display_hetzner_k8s() {
+    assert_eq!(format!("{}", KubernetesDistribution::HetznerK8s), "Hetzner Kubernetes");
+}
+
+// ============================================================================
+// New managed distribution tests
+// ============================================================================
+
+#[test]
+fn test_cluster_info_is_managed_lke() {
+    let info = create_cluster_info(KubernetesDistribution::LKE);
+    assert!(info.is_managed());
+}
+
+#[test]
+fn test_cluster_info_is_managed_civo_k8s() {
+    let info = create_cluster_info(KubernetesDistribution::CivoK8s);
+    assert!(info.is_managed());
+}
+
+#[test]
+fn test_cluster_info_is_managed_hetzner_k8s() {
+    let info = create_cluster_info(KubernetesDistribution::HetznerK8s);
+    assert!(info.is_managed());
+}
+
+#[test]
+fn test_cluster_info_is_not_managed_k0s() {
+    let info = create_cluster_info(KubernetesDistribution::K0s);
+    assert!(!info.is_managed());
+}
+
+#[test]
+fn test_cluster_info_is_not_managed_talos() {
+    let info = create_cluster_info(KubernetesDistribution::Talos);
+    assert!(!info.is_managed());
+}
+
+#[test]
+fn test_cluster_info_is_not_managed_tanzu_tkg() {
+    let info = create_cluster_info(KubernetesDistribution::TanzuTKG);
+    assert!(!info.is_managed());
+}
+
+#[test]
+fn test_cluster_info_is_not_managed_rancher_desktop() {
+    let info = create_cluster_info(KubernetesDistribution::RancherDesktop);
+    assert!(!info.is_managed());
+}
+
+// ============================================================================
+// Container OS detection tests
+// ============================================================================
+
+use kubecontrol::debug::cloud::detect_container_os;
+
+#[test]
+fn test_detect_container_os_talos() {
+    let nodes = vec![create_full_node("node-1", BTreeMap::new(), true, "amd64", "Talos (v1.6.4)")];
+    let os = detect_container_os(&nodes);
+    assert_eq!(os, Some("Talos Linux".to_string()));
+}
+
+#[test]
+fn test_detect_container_os_flatcar() {
+    let nodes = vec![create_full_node("node-1", BTreeMap::new(), true, "amd64", "Flatcar Container Linux 3510.2.1")];
+    let os = detect_container_os(&nodes);
+    assert_eq!(os, Some("Flatcar Container Linux".to_string()));
+}
+
+#[test]
+fn test_detect_container_os_bottlerocket() {
+    let nodes = vec![create_full_node("node-1", BTreeMap::new(), true, "amd64", "Bottlerocket OS 1.15.1")];
+    let os = detect_container_os(&nodes);
+    assert_eq!(os, Some("Bottlerocket".to_string()));
+}
+
+#[test]
+fn test_detect_container_os_cos() {
+    let nodes = vec![create_full_node("node-1", BTreeMap::new(), true, "amd64", "Container-Optimized OS from Google")];
+    let os = detect_container_os(&nodes);
+    assert_eq!(os, Some("Container-Optimized OS (Google)".to_string()));
+}
+
+#[test]
+fn test_detect_container_os_rhcos() {
+    let nodes = vec![create_full_node("node-1", BTreeMap::new(), true, "amd64", "Red Hat Enterprise Linux CoreOS 413.92")];
+    let os = detect_container_os(&nodes);
+    assert_eq!(os, Some("Red Hat CoreOS".to_string()));
+}
+
+#[test]
+fn test_detect_container_os_none_for_ubuntu() {
+    let nodes = vec![create_full_node("node-1", BTreeMap::new(), true, "amd64", "Ubuntu 22.04.3 LTS")];
+    let os = detect_container_os(&nodes);
+    assert_eq!(os, None);
+}
+
+#[test]
+fn test_detect_container_os_empty_nodes() {
+    let nodes: Vec<Node> = vec![];
+    let os = detect_container_os(&nodes);
+    assert_eq!(os, None);
+}
+
+// ============================================================================
+// Cloud provider serialization tests for new providers
+// ============================================================================
+
+#[test]
+fn test_cloud_provider_json_serialization_hetzner() {
+    let provider = CloudProvider::Hetzner;
+    let json = serde_json::to_string(&provider).unwrap();
+    assert_eq!(json, "\"hetzner\"");
+}
+
+#[test]
+fn test_cloud_provider_json_serialization_linode() {
+    let provider = CloudProvider::Linode;
+    let json = serde_json::to_string(&provider).unwrap();
+    assert_eq!(json, "\"linode\"");
+}
+
+#[test]
+fn test_cloud_provider_json_serialization_civo() {
+    let provider = CloudProvider::Civo;
+    let json = serde_json::to_string(&provider).unwrap();
+    assert_eq!(json, "\"civo\"");
+}
+
+#[test]
+fn test_distribution_json_serialization_k0s() {
+    let dist = KubernetesDistribution::K0s;
+    let json = serde_json::to_string(&dist).unwrap();
+    assert_eq!(json, "\"k0s\"");
+}
+
+#[test]
+fn test_distribution_json_serialization_talos() {
+    let dist = KubernetesDistribution::Talos;
+    let json = serde_json::to_string(&dist).unwrap();
+    assert_eq!(json, "\"talos\"");
+}
+
+#[test]
+fn test_distribution_json_serialization_lke() {
+    let dist = KubernetesDistribution::LKE;
+    let json = serde_json::to_string(&dist).unwrap();
+    assert_eq!(json, "\"lke\"");
+}
+
+// ============================================================================
+// EKS detection tests
+// ============================================================================
+
+use kubecontrol::debug::eks::is_eks;
+
+#[test]
+fn test_is_eks_with_nodegroup_label() {
+    let mut labels = BTreeMap::new();
+    labels.insert("eks.amazonaws.com/nodegroup".to_string(), "my-nodegroup".to_string());
+
+    let nodes = vec![create_node_with_labels("node-1", labels)];
+    assert!(is_eks(&nodes));
+}
+
+#[test]
+fn test_is_eks_with_eksctl_label() {
+    let mut labels = BTreeMap::new();
+    labels.insert("alpha.eksctl.io/nodegroup-name".to_string(), "ng-1".to_string());
+
+    let nodes = vec![create_node_with_labels("node-1", labels)];
+    assert!(is_eks(&nodes));
+}
+
+#[test]
+fn test_is_eks_with_aws_provider_id() {
+    let nodes = vec![create_node_with_provider_id("node-1", "aws:///us-west-2a/i-1234567890abcdef0")];
+    assert!(is_eks(&nodes));
+}
+
+#[test]
+fn test_is_eks_with_nodegroup_image_label() {
+    let mut labels = BTreeMap::new();
+    labels.insert("eks.amazonaws.com/nodegroup-image".to_string(), "ami-12345".to_string());
+
+    let nodes = vec![create_node_with_labels("node-1", labels)];
+    assert!(is_eks(&nodes));
+}
+
+#[test]
+fn test_is_eks_false_for_gke() {
+    let mut labels = BTreeMap::new();
+    labels.insert("cloud.google.com/gke-nodepool".to_string(), "default-pool".to_string());
+
+    let nodes = vec![create_node_with_labels("node-1", labels)];
+    assert!(!is_eks(&nodes));
+}
+
+#[test]
+fn test_is_eks_false_for_aks() {
+    let mut labels = BTreeMap::new();
+    labels.insert("kubernetes.azure.com/agentpool".to_string(), "nodepool1".to_string());
+
+    let nodes = vec![create_node_with_labels("node-1", labels)];
+    assert!(!is_eks(&nodes));
+}
+
+#[test]
+fn test_is_eks_false_for_vanilla_cluster() {
+    let nodes = vec![create_node_with_labels("node-1", BTreeMap::new())];
+    assert!(!is_eks(&nodes));
+}
+
+#[test]
+fn test_is_eks_false_for_empty_nodes() {
+    let nodes: Vec<Node> = vec![];
+    assert!(!is_eks(&nodes));
+}
+
+#[test]
+fn test_is_eks_with_multiple_nodes_one_eks() {
+    let mut eks_labels = BTreeMap::new();
+    eks_labels.insert("eks.amazonaws.com/nodegroup".to_string(), "ng".to_string());
+
+    let nodes = vec![
+        create_node_with_labels("node-1", BTreeMap::new()),
+        create_node_with_labels("node-2", eks_labels),
+    ];
+    assert!(is_eks(&nodes));
+}

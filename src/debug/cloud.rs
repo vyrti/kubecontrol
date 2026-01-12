@@ -20,6 +20,12 @@ pub enum CloudProvider {
     Oracle,
     IBM,
     Alibaba,
+    Hetzner,
+    Linode,
+    Civo,
+    Vultr,
+    Scaleway,
+    Exoscale,
     OnPremise,
 }
 
@@ -33,6 +39,12 @@ impl std::fmt::Display for CloudProvider {
             CloudProvider::Oracle => write!(f, "Oracle Cloud"),
             CloudProvider::IBM => write!(f, "IBM Cloud"),
             CloudProvider::Alibaba => write!(f, "Alibaba Cloud"),
+            CloudProvider::Hetzner => write!(f, "Hetzner Cloud"),
+            CloudProvider::Linode => write!(f, "Linode (Akamai)"),
+            CloudProvider::Civo => write!(f, "Civo"),
+            CloudProvider::Vultr => write!(f, "Vultr"),
+            CloudProvider::Scaleway => write!(f, "Scaleway"),
+            CloudProvider::Exoscale => write!(f, "Exoscale"),
             CloudProvider::OnPremise => write!(f, "On-Premise"),
         }
     }
@@ -42,22 +54,33 @@ impl std::fmt::Display for CloudProvider {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum KubernetesDistribution {
+    // Major cloud managed services
     EKS,
     GKE,
     AKS,
+    DOKS,       // DigitalOcean Kubernetes
+    OKE,        // Oracle Kubernetes Engine
+    IKS,        // IBM Kubernetes Service
+    ACK,        // Alibaba Container Service
+    LKE,        // Linode Kubernetes Engine
+    CivoK8s,    // Civo managed Kubernetes
+    HetznerK8s, // Hetzner managed Kubernetes
+    // Self-hosted / Enterprise
     OpenShift,
     RKE,
     RKE2,
     K3s,
+    K0s,
     Kubeadm,
+    TanzuTKG, // VMware Tanzu Kubernetes Grid
+    Talos,    // Talos Linux
+    // Local development
     MicroK8s,
     Kind,
     Minikube,
     DockerDesktop,
-    DOKS, // DigitalOcean Kubernetes
-    OKE,  // Oracle Kubernetes Engine
-    IKS,  // IBM Kubernetes Service
-    ACK,  // Alibaba Container Service
+    RancherDesktop,
+    // Unknown
     Unknown,
 }
 
@@ -67,19 +90,26 @@ impl std::fmt::Display for KubernetesDistribution {
             KubernetesDistribution::EKS => write!(f, "Amazon EKS"),
             KubernetesDistribution::GKE => write!(f, "Google GKE"),
             KubernetesDistribution::AKS => write!(f, "Azure AKS"),
-            KubernetesDistribution::OpenShift => write!(f, "Red Hat OpenShift"),
-            KubernetesDistribution::RKE => write!(f, "Rancher RKE"),
-            KubernetesDistribution::RKE2 => write!(f, "Rancher RKE2"),
-            KubernetesDistribution::K3s => write!(f, "Rancher K3s"),
-            KubernetesDistribution::Kubeadm => write!(f, "Kubeadm"),
-            KubernetesDistribution::MicroK8s => write!(f, "MicroK8s"),
-            KubernetesDistribution::Kind => write!(f, "Kind"),
-            KubernetesDistribution::Minikube => write!(f, "Minikube"),
-            KubernetesDistribution::DockerDesktop => write!(f, "Docker Desktop"),
             KubernetesDistribution::DOKS => write!(f, "DigitalOcean Kubernetes"),
             KubernetesDistribution::OKE => write!(f, "Oracle Kubernetes Engine"),
             KubernetesDistribution::IKS => write!(f, "IBM Kubernetes Service"),
             KubernetesDistribution::ACK => write!(f, "Alibaba Container Service"),
+            KubernetesDistribution::LKE => write!(f, "Linode LKE"),
+            KubernetesDistribution::CivoK8s => write!(f, "Civo Kubernetes"),
+            KubernetesDistribution::HetznerK8s => write!(f, "Hetzner Kubernetes"),
+            KubernetesDistribution::OpenShift => write!(f, "Red Hat OpenShift"),
+            KubernetesDistribution::RKE => write!(f, "Rancher RKE"),
+            KubernetesDistribution::RKE2 => write!(f, "Rancher RKE2"),
+            KubernetesDistribution::K3s => write!(f, "Rancher K3s"),
+            KubernetesDistribution::K0s => write!(f, "k0s"),
+            KubernetesDistribution::Kubeadm => write!(f, "Kubeadm"),
+            KubernetesDistribution::TanzuTKG => write!(f, "VMware Tanzu (TKG)"),
+            KubernetesDistribution::Talos => write!(f, "Talos Linux"),
+            KubernetesDistribution::MicroK8s => write!(f, "MicroK8s"),
+            KubernetesDistribution::Kind => write!(f, "Kind"),
+            KubernetesDistribution::Minikube => write!(f, "Minikube"),
+            KubernetesDistribution::DockerDesktop => write!(f, "Docker Desktop"),
+            KubernetesDistribution::RancherDesktop => write!(f, "Rancher Desktop"),
             KubernetesDistribution::Unknown => write!(f, "Unknown"),
         }
     }
@@ -144,6 +174,9 @@ impl ClusterInfo {
                 | KubernetesDistribution::OKE
                 | KubernetesDistribution::IKS
                 | KubernetesDistribution::ACK
+                | KubernetesDistribution::LKE
+                | KubernetesDistribution::CivoK8s
+                | KubernetesDistribution::HetznerK8s
         )
     }
 }
@@ -157,27 +190,47 @@ pub fn detect_cloud_provider(nodes: &[Node]) -> Option<CloudProvider> {
         // Check provider ID from spec if available
         if let Some(spec) = &node.spec {
             if let Some(provider_id) = &spec.provider_id {
-            if provider_id.starts_with("aws://") {
-                return Some(CloudProvider::AWS);
-            }
-            if provider_id.starts_with("gce://") {
-                return Some(CloudProvider::GCP);
-            }
-            if provider_id.starts_with("azure://") {
-                return Some(CloudProvider::Azure);
-            }
-            if provider_id.starts_with("digitalocean://") {
-                return Some(CloudProvider::DigitalOcean);
-            }
-            if provider_id.starts_with("oci://") {
-                return Some(CloudProvider::Oracle);
-            }
-            if provider_id.starts_with("ibm://") {
-                return Some(CloudProvider::IBM);
-            }
-            if provider_id.starts_with("alicloud://") {
-                return Some(CloudProvider::Alibaba);
-            }
+                // Major cloud providers
+                if provider_id.starts_with("aws://") {
+                    return Some(CloudProvider::AWS);
+                }
+                if provider_id.starts_with("gce://") {
+                    return Some(CloudProvider::GCP);
+                }
+                if provider_id.starts_with("azure://") {
+                    return Some(CloudProvider::Azure);
+                }
+                if provider_id.starts_with("digitalocean://") {
+                    return Some(CloudProvider::DigitalOcean);
+                }
+                if provider_id.starts_with("oci://") {
+                    return Some(CloudProvider::Oracle);
+                }
+                if provider_id.starts_with("ibm://") {
+                    return Some(CloudProvider::IBM);
+                }
+                if provider_id.starts_with("alicloud://") {
+                    return Some(CloudProvider::Alibaba);
+                }
+                // Additional cloud providers
+                if provider_id.starts_with("hcloud://") {
+                    return Some(CloudProvider::Hetzner);
+                }
+                if provider_id.starts_with("linode://") {
+                    return Some(CloudProvider::Linode);
+                }
+                if provider_id.starts_with("civo://") {
+                    return Some(CloudProvider::Civo);
+                }
+                if provider_id.starts_with("vultr://") {
+                    return Some(CloudProvider::Vultr);
+                }
+                if provider_id.starts_with("scaleway://") {
+                    return Some(CloudProvider::Scaleway);
+                }
+                if provider_id.starts_with("exoscale://") {
+                    return Some(CloudProvider::Exoscale);
+                }
             }
         }
 
@@ -246,6 +299,25 @@ pub async fn detect_distribution(
     if version_lower.contains("+k3s") || version_lower.contains("-k3s") {
         return KubernetesDistribution::K3s;
     }
+    if version_lower.contains("+k0s") || version_lower.contains("-k0s") {
+        return KubernetesDistribution::K0s;
+    }
+
+    // Check for Talos from OS image (before label checks)
+    for node in nodes {
+        if let Some(status) = &node.status {
+            if let Some(node_info) = &status.node_info {
+                // Talos Linux detection via osImage
+                if node_info.os_image.contains("Talos") {
+                    return KubernetesDistribution::Talos;
+                }
+                // Also check kernel version for Talos
+                if node_info.kernel_version.ends_with("-talos") {
+                    return KubernetesDistribution::Talos;
+                }
+            }
+        }
+    }
 
     // Check node labels and annotations
     for node in nodes {
@@ -268,6 +340,16 @@ pub async fn detect_distribution(
             // RKE
             if labels.contains_key("rke.cattle.io/machine") {
                 return KubernetesDistribution::RKE;
+            }
+
+            // VMware Tanzu TKG
+            if labels.keys().any(|k| k.starts_with("run.tanzu.vmware.com/")) {
+                return KubernetesDistribution::TanzuTKG;
+            }
+
+            // k0s via labels
+            if labels.keys().any(|k| k.starts_with("k0sproject.io/")) {
+                return KubernetesDistribution::K0s;
             }
 
             // MicroK8s
@@ -304,13 +386,25 @@ pub async fn detect_distribution(
         return KubernetesDistribution::Kubeadm;
     }
 
-    // Check for Docker Desktop
+    // Check for local development distributions by node name
     for node in nodes {
         if let Some(name) = &node.metadata.name {
             if name.contains("docker-desktop") {
                 return KubernetesDistribution::DockerDesktop;
             }
+            if name.contains("rancher-desktop") {
+                return KubernetesDistribution::RancherDesktop;
+            }
         }
+    }
+
+    // Check for managed Kubernetes based on cloud provider
+    let cloud_provider = detect_cloud_provider(nodes);
+    match cloud_provider {
+        Some(CloudProvider::Linode) => return KubernetesDistribution::LKE,
+        Some(CloudProvider::Civo) => return KubernetesDistribution::CivoK8s,
+        Some(CloudProvider::Hetzner) => return KubernetesDistribution::HetznerK8s,
+        _ => {}
     }
 
     KubernetesDistribution::Unknown
@@ -336,6 +430,39 @@ async fn is_openshift(client: &Client) -> bool {
 async fn is_kubeadm(client: &Client) -> bool {
     let configmaps: Api<ConfigMap> = Api::namespaced(client.clone(), "kube-system");
     configmaps.get("kubeadm-config").await.is_ok()
+}
+
+/// Detect container-optimized OS from node information
+pub fn detect_container_os(nodes: &[Node]) -> Option<String> {
+    for node in nodes {
+        if let Some(status) = &node.status {
+            if let Some(node_info) = &status.node_info {
+                let os_image = &node_info.os_image;
+
+                // Talos Linux
+                if os_image.contains("Talos") {
+                    return Some("Talos Linux".to_string());
+                }
+                // Flatcar Container Linux
+                if os_image.contains("Flatcar") {
+                    return Some("Flatcar Container Linux".to_string());
+                }
+                // AWS Bottlerocket
+                if os_image.contains("Bottlerocket") {
+                    return Some("Bottlerocket".to_string());
+                }
+                // Google Container-Optimized OS
+                if os_image.contains("Container-Optimized OS") {
+                    return Some("Container-Optimized OS (Google)".to_string());
+                }
+                // Red Hat CoreOS (OpenShift)
+                if os_image.contains("CoreOS") || os_image.contains("RHCOS") {
+                    return Some("Red Hat CoreOS".to_string());
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Extract region from node information
@@ -559,6 +686,11 @@ pub async fn get_cluster_info(client: &Client) -> Result<ClusterInfo, KcError> {
                 metadata.insert("kernel_version".to_string(), node_info.kernel_version.clone());
             }
         }
+    }
+
+    // Detect container-optimized OS
+    if let Some(container_os) = detect_container_os(&nodes) {
+        metadata.insert("container_os".to_string(), container_os);
     }
 
     Ok(ClusterInfo {

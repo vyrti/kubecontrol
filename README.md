@@ -9,7 +9,7 @@ A fast, user-friendly Kubernetes CLI tool written in Rust.
 - **Fuzzy matching** - Partial name matching for quick resource access
 - **In-memory caching** - Fast repeated queries with 30-second TTL
 - **Multi-context** - Seamless switching between Kubernetes contexts
-- **Multi-cloud** - Supports AWS EKS, GCP GKE, Azure AKS, OpenShift, RKE/RKE2, K3s, and more
+- **Multi-cloud** - Supports 14 cloud providers and 23 Kubernetes distributions
 - **Multiple output formats** - Table, JSON, YAML, wide, and name-only
 - **Web dashboard** - Built-in web UI for cluster visualization
 - **Debugging suite** - Comprehensive diagnostics for cluster issues
@@ -316,6 +316,12 @@ kc automatically detects your cloud provider and Kubernetes distribution:
 | Oracle Cloud | OKE labels, `oci://` provider ID |
 | IBM Cloud | IKS labels, `ibm://` provider ID |
 | Alibaba Cloud | ACK labels, `alicloud://` provider ID |
+| Hetzner Cloud | `hcloud://` provider ID |
+| Linode (Akamai) | `linode://` provider ID |
+| Civo | `civo://` provider ID |
+| Vultr | `vultr://` provider ID |
+| Scaleway | `scaleway://` provider ID |
+| Exoscale | `exoscale://` provider ID |
 
 ### Supported Distributions
 
@@ -324,15 +330,36 @@ kc automatically detects your cloud provider and Kubernetes distribution:
 | Amazon EKS | `+eks` in version, EKS node labels |
 | Google GKE | `-gke.` in version, GKE node labels |
 | Azure AKS | AKS node labels |
+| DigitalOcean DOKS | DigitalOcean provider ID |
+| Oracle OKE | Oracle provider ID |
+| IBM IKS | IBM provider ID |
+| Alibaba ACK | Alibaba provider ID |
+| Linode LKE | Linode provider ID |
+| Civo Kubernetes | Civo provider ID |
+| Hetzner Kubernetes | Hetzner provider ID |
 | Red Hat OpenShift | OpenShift API groups |
 | Rancher RKE | RKE annotations |
 | Rancher RKE2 | `+rke2` in version |
 | Rancher K3s | `+k3s` in version |
+| k0s | `+k0s` in version, k0sproject.io labels |
 | Kubeadm | `kubeadm-config` ConfigMap |
+| VMware Tanzu (TKG) | Tanzu node labels |
+| Talos Linux | OS image contains "Talos" |
 | MicroK8s | MicroK8s labels |
 | Kind | Kind labels |
 | Minikube | Minikube labels |
 | Docker Desktop | Node name contains `docker-desktop` |
+| Rancher Desktop | Node name contains `rancher-desktop` |
+
+### Detected Container Operating Systems
+
+| OS | Detection Method |
+|----|-----------------|
+| Talos Linux | OS image contains "Talos" |
+| Flatcar Container Linux | OS image contains "Flatcar" |
+| Bottlerocket | OS image contains "Bottlerocket" |
+| Container-Optimized OS (Google) | OS image contains "Container-Optimized OS" |
+| Red Hat CoreOS | OS image contains "CoreOS" or "RHCOS" |
 
 ## Web Dashboard
 
