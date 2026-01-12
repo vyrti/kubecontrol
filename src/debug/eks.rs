@@ -73,8 +73,8 @@ pub async fn debug_eks(client: &Client, namespace: Option<&str>) -> Result<Debug
     #[cfg(not(feature = "aws"))]
     let aws_clients: Option<()> = None;
 
-    // Run K8s-only checks in parallel
-    let (irsa_issues, addon_issues, node_issues, pod_identity_issues, config_issues) = tokio::join!(
+    // Run core EKS checks in parallel (batch 1)
+    let (irsa_issues, addon_issues, node_issues, pod_identity_issues, auth_config_issues) = tokio::join!(
         check_irsa(client, namespace),
         check_eks_addons(client),
         check_eks_node_config(client),
@@ -94,7 +94,87 @@ pub async fn debug_eks(client: &Client, namespace: Option<&str>) -> Result<Debug
     if let Ok(i) = pod_identity_issues {
         issues.extend(i);
     }
-    if let Ok(i) = config_issues {
+    if let Ok(i) = auth_config_issues {
+        issues.extend(i);
+    }
+
+    // Run Kubernetes workload checks in parallel (batch 2)
+    let (pod_issues, deployment_issues, service_issues, config_issues_k8s) = tokio::join!(
+        check_pod_issues(client, namespace),
+        check_deployment_issues(client, namespace),
+        check_service_issues(client, namespace),
+        check_config_issues(client, namespace),
+    );
+
+    if let Ok(i) = pod_issues {
+        issues.extend(i);
+    }
+    if let Ok(i) = deployment_issues {
+        issues.extend(i);
+    }
+    if let Ok(i) = service_issues {
+        issues.extend(i);
+    }
+    if let Ok(i) = config_issues_k8s {
+        issues.extend(i);
+    }
+
+    // Run additional workload checks in parallel (batch 3)
+    let (rbac_issues, scheduling_issues, statefulset_issues, job_issues) = tokio::join!(
+        check_rbac_issues(client, namespace),
+        check_scheduling_issues(client, namespace),
+        check_statefulset_issues(client, namespace),
+        check_job_issues(client, namespace),
+    );
+
+    if let Ok(i) = rbac_issues {
+        issues.extend(i);
+    }
+    if let Ok(i) = scheduling_issues {
+        issues.extend(i);
+    }
+    if let Ok(i) = statefulset_issues {
+        issues.extend(i);
+    }
+    if let Ok(i) = job_issues {
+        issues.extend(i);
+    }
+
+    // Run infrastructure checks in parallel (batch 4)
+    let (ingress_issues, webhook_issues, quota_issues) = tokio::join!(
+        check_ingress_issues(client, namespace),
+        check_webhook_issues(client),
+        check_quota_issues(client, namespace),
+    );
+
+    if let Ok(i) = ingress_issues {
+        issues.extend(i);
+    }
+    if let Ok(i) = webhook_issues {
+        issues.extend(i);
+    }
+    if let Ok(i) = quota_issues {
+        issues.extend(i);
+    }
+
+    // Run AWS-specific checks in parallel (batch 5)
+    let (lb_issues, ecr_issues, observability_issues, node_group_issues) = tokio::join!(
+        check_load_balancer_issues(client),
+        check_ecr_issues(client, namespace),
+        check_observability_issues(client),
+        check_node_group_issues(client),
+    );
+
+    if let Ok(i) = lb_issues {
+        issues.extend(i);
+    }
+    if let Ok(i) = ecr_issues {
+        issues.extend(i);
+    }
+    if let Ok(i) = observability_issues {
+        issues.extend(i);
+    }
+    if let Ok(i) = node_group_issues {
         issues.extend(i);
     }
 
@@ -1175,6 +1255,3134 @@ pub async fn check_irsa_iam_roles(
                         );
                     }
                 }
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+// ============================================================================
+// Kubernetes workload checks
+// ============================================================================
+
+/// Check for pod issues (CrashLoopBackOff, OOMKilled, ImagePullBackOff, etc.)
+pub async fn check_pod_issues(
+    client: &Client,
+    namespace: Option<&str>,
+) -> Result<Vec<DebugIssue>, KcError> {
+    let mut issues = Vec::new();
+
+    let pods: Api<Pod> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    let pod_list = pods
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| KcError::Config(e.to_string()))?;
+
+    for pod in pod_list {
+        let pod_name = pod.metadata.name.clone().unwrap_or_default();
+        let pod_ns = pod.metadata.namespace.clone().unwrap_or_default();
+
+        // Skip completed pods (Jobs)
+        let phase = pod
+            .status
+            .as_ref()
+            .and_then(|s| s.phase.as_ref())
+            .map(|p| p.as_str())
+            .unwrap_or("");
+
+        if phase == "Succeeded" {
+            continue;
+        }
+
+        // Check pod phase
+        if phase == "Failed" {
+            let reason = pod
+                .status
+                .as_ref()
+                .and_then(|s| s.reason.as_ref())
+                .map(|r| r.as_str())
+                .unwrap_or("unknown");
+
+            issues.push(
+                DebugIssue::new(
+                    Severity::Critical,
+                    DebugCategory::Pod,
+                    "Pod",
+                    &pod_name,
+                    "Pod Failed",
+                    format!("Pod is in Failed state: {}", reason),
+                )
+                .with_namespace(&pod_ns)
+                .with_remediation("Check pod events and logs for failure reason"),
+            );
+            continue;
+        }
+
+        // Check for Pending pods
+        if phase == "Pending" {
+            let pending_duration = pod
+                .metadata
+                .creation_timestamp
+                .as_ref()
+                .map(|ts| {
+                    let now = chrono::Utc::now();
+                    let created: chrono::DateTime<chrono::Utc> = ts.0;
+                    now.signed_duration_since(created).num_seconds()
+                })
+                .unwrap_or(0);
+
+            // Only alert if pending for more than 5 minutes
+            if pending_duration > 300 {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Critical,
+                        DebugCategory::Pod,
+                        "Pod",
+                        &pod_name,
+                        "Pod Stuck Pending",
+                        format!(
+                            "Pod has been pending for {} seconds. Check scheduling constraints.",
+                            pending_duration
+                        ),
+                    )
+                    .with_namespace(&pod_ns)
+                    .with_remediation(
+                        "Check pod events for scheduling errors: insufficient resources, taints, node selectors",
+                    ),
+                );
+            }
+            continue;
+        }
+
+        // Check container statuses for Running pods
+        if let Some(status) = &pod.status {
+            // Check init container statuses
+            if let Some(init_statuses) = &status.init_container_statuses {
+                for init_cs in init_statuses {
+                    if let Some(state) = &init_cs.state {
+                        if let Some(waiting) = &state.waiting {
+                            let reason = waiting.reason.as_deref().unwrap_or("unknown");
+                            let message = waiting.message.as_deref().unwrap_or("");
+
+                            if reason == "CrashLoopBackOff" {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Critical,
+                                        DebugCategory::Pod,
+                                        "Pod",
+                                        &pod_name,
+                                        "Init Container CrashLoopBackOff",
+                                        format!(
+                                            "Init container '{}' is in CrashLoopBackOff: {}",
+                                            init_cs.name, message
+                                        ),
+                                    )
+                                    .with_namespace(&pod_ns)
+                                    .with_remediation(
+                                        "Check init container logs: kubectl logs POD -c INIT_CONTAINER",
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check container statuses
+            if let Some(container_statuses) = &status.container_statuses {
+                for cs in container_statuses {
+                    let restart_count = cs.restart_count;
+
+                    // Check for high restart count
+                    if restart_count > 5 {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Warning,
+                                DebugCategory::Pod,
+                                "Pod",
+                                &pod_name,
+                                "High Restart Count",
+                                format!(
+                                    "Container '{}' has restarted {} times",
+                                    cs.name, restart_count
+                                ),
+                            )
+                            .with_namespace(&pod_ns)
+                            .with_remediation("Check container logs and previous logs: kubectl logs POD -c CONTAINER --previous"),
+                        );
+                    }
+
+                    // Check current state
+                    if let Some(state) = &cs.state {
+                        if let Some(waiting) = &state.waiting {
+                            let reason = waiting.reason.as_deref().unwrap_or("unknown");
+                            let message = waiting.message.as_deref().unwrap_or("");
+
+                            match reason {
+                                "CrashLoopBackOff" => {
+                                    issues.push(
+                                        DebugIssue::new(
+                                            Severity::Critical,
+                                            DebugCategory::Pod,
+                                            "Pod",
+                                            &pod_name,
+                                            "CrashLoopBackOff",
+                                            format!(
+                                                "Container '{}' is in CrashLoopBackOff: {}",
+                                                cs.name, message
+                                            ),
+                                        )
+                                        .with_namespace(&pod_ns)
+                                        .with_remediation(
+                                            "Check container logs: kubectl logs POD -c CONTAINER --previous",
+                                        ),
+                                    );
+                                }
+                                "ImagePullBackOff" | "ErrImagePull" => {
+                                    let remediation = if message.contains("repository does not exist")
+                                        || message.contains("not found")
+                                    {
+                                        "Verify image name and tag exist in the registry"
+                                    } else if message.contains("unauthorized") || message.contains("denied") {
+                                        "Check image pull secrets and ECR/registry authentication"
+                                    } else {
+                                        "Check image name, tag, and pull secrets configuration"
+                                    };
+
+                                    issues.push(
+                                        DebugIssue::new(
+                                            Severity::Critical,
+                                            DebugCategory::Pod,
+                                            "Pod",
+                                            &pod_name,
+                                            "Image Pull Failed",
+                                            format!(
+                                                "Container '{}' cannot pull image: {}",
+                                                cs.name, message
+                                            ),
+                                        )
+                                        .with_namespace(&pod_ns)
+                                        .with_remediation(remediation),
+                                    );
+                                }
+                                "CreateContainerConfigError" => {
+                                    issues.push(
+                                        DebugIssue::new(
+                                            Severity::Critical,
+                                            DebugCategory::Pod,
+                                            "Pod",
+                                            &pod_name,
+                                            "Container Config Error",
+                                            format!(
+                                                "Container '{}' has configuration error: {}",
+                                                cs.name, message
+                                            ),
+                                        )
+                                        .with_namespace(&pod_ns)
+                                        .with_remediation(
+                                            "Check ConfigMaps, Secrets, and environment variable references",
+                                        ),
+                                    );
+                                }
+                                "ContainerCreating" => {
+                                    // Check if stuck for too long
+                                    let pending_duration = pod
+                                        .metadata
+                                        .creation_timestamp
+                                        .as_ref()
+                                        .map(|ts| {
+                                            let now = chrono::Utc::now();
+                                            let created: chrono::DateTime<chrono::Utc> = ts.0;
+                                            now.signed_duration_since(created).num_seconds()
+                                        })
+                                        .unwrap_or(0);
+
+                                    if pending_duration > 300 {
+                                        issues.push(
+                                            DebugIssue::new(
+                                                Severity::Critical,
+                                                DebugCategory::Pod,
+                                                "Pod",
+                                                &pod_name,
+                                                "Stuck Creating Container",
+                                                format!(
+                                                    "Container '{}' stuck in ContainerCreating for {} seconds",
+                                                    cs.name, pending_duration
+                                                ),
+                                            )
+                                            .with_namespace(&pod_ns)
+                                            .with_remediation(
+                                                "Check pod events for volume mount or network issues",
+                                            ),
+                                        );
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        if let Some(terminated) = &state.terminated {
+                            let exit_code = terminated.exit_code;
+                            let reason = terminated.reason.as_deref().unwrap_or("unknown");
+
+                            if reason == "OOMKilled" || exit_code == 137 {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Critical,
+                                        DebugCategory::Pod,
+                                        "Pod",
+                                        &pod_name,
+                                        "OOMKilled",
+                                        format!(
+                                            "Container '{}' was killed due to Out Of Memory",
+                                            cs.name
+                                        ),
+                                    )
+                                    .with_namespace(&pod_ns)
+                                    .with_remediation(
+                                        "Increase memory limits or optimize application memory usage",
+                                    ),
+                                );
+                            } else if exit_code == 1 {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Warning,
+                                        DebugCategory::Pod,
+                                        "Pod",
+                                        &pod_name,
+                                        "Container Error Exit",
+                                        format!(
+                                            "Container '{}' exited with error code 1",
+                                            cs.name
+                                        ),
+                                    )
+                                    .with_namespace(&pod_ns)
+                                    .with_remediation(
+                                        "Check container logs for application errors",
+                                    ),
+                                );
+                            }
+                        }
+                    }
+
+                    // Check last termination state for OOMKilled
+                    if let Some(last_state) = &cs.last_state {
+                        if let Some(terminated) = &last_state.terminated {
+                            if terminated.reason.as_deref() == Some("OOMKilled") {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Warning,
+                                        DebugCategory::Pod,
+                                        "Pod",
+                                        &pod_name,
+                                        "Previous OOMKill",
+                                        format!(
+                                            "Container '{}' was previously OOMKilled",
+                                            cs.name
+                                        ),
+                                    )
+                                    .with_namespace(&pod_ns)
+                                    .with_remediation(
+                                        "Increase memory limits or optimize application memory usage",
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check for Evicted pods
+            if let Some(reason) = &status.reason {
+                if reason == "Evicted" {
+                    let message = status.message.as_deref().unwrap_or("unknown reason");
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Pod,
+                            "Pod",
+                            &pod_name,
+                            "Pod Evicted",
+                            format!("Pod was evicted: {}", message),
+                        )
+                        .with_namespace(&pod_ns)
+                        .with_remediation(
+                            "Check node resources (disk pressure, memory pressure) and pod priority",
+                        ),
+                    );
+                }
+            }
+        }
+
+        // Check for security concerns in pod spec
+        if let Some(spec) = &pod.spec {
+            for container in &spec.containers {
+                // Check for privileged containers
+                if let Some(sec_ctx) = &container.security_context {
+                    if sec_ctx.privileged == Some(true) {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Warning,
+                                DebugCategory::Security,
+                                "Pod",
+                                &pod_name,
+                                "Privileged Container",
+                                format!("Container '{}' is running as privileged", container.name),
+                            )
+                            .with_namespace(&pod_ns)
+                            .with_remediation(
+                                "Avoid privileged containers unless absolutely necessary",
+                            ),
+                        );
+                    }
+
+                    if sec_ctx.run_as_user == Some(0) {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Warning,
+                                DebugCategory::Security,
+                                "Pod",
+                                &pod_name,
+                                "Running as Root",
+                                format!("Container '{}' is running as root (UID 0)", container.name),
+                            )
+                            .with_namespace(&pod_ns)
+                            .with_remediation(
+                                "Set runAsNonRoot: true and specify a non-root runAsUser",
+                            ),
+                        );
+                    }
+                }
+
+                // Check for missing resource limits
+                let has_limits = container
+                    .resources
+                    .as_ref()
+                    .and_then(|r| r.limits.as_ref())
+                    .map(|l| !l.is_empty())
+                    .unwrap_or(false);
+
+                if !has_limits {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Resources,
+                            "Pod",
+                            &pod_name,
+                            "No Resource Limits",
+                            format!(
+                                "Container '{}' has no resource limits set",
+                                container.name
+                            ),
+                        )
+                        .with_namespace(&pod_ns)
+                        .with_remediation("Set CPU and memory limits to prevent resource contention"),
+                    );
+                }
+            }
+
+            // Check for host networking
+            if spec.host_network == Some(true) {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Warning,
+                        DebugCategory::Security,
+                        "Pod",
+                        &pod_name,
+                        "Host Network Enabled",
+                        "Pod is using host network namespace",
+                    )
+                    .with_namespace(&pod_ns)
+                    .with_remediation("Avoid hostNetwork unless required for network monitoring"),
+                );
+            }
+
+            if spec.host_pid == Some(true) {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Warning,
+                        DebugCategory::Security,
+                        "Pod",
+                        &pod_name,
+                        "Host PID Enabled",
+                        "Pod is using host PID namespace",
+                    )
+                    .with_namespace(&pod_ns)
+                    .with_remediation("Avoid hostPID unless required for process monitoring"),
+                );
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check for deployment issues (replicas, rollout, HPA)
+pub async fn check_deployment_issues(
+    client: &Client,
+    namespace: Option<&str>,
+) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::apps::v1::Deployment;
+    use k8s_openapi::api::autoscaling::v2::HorizontalPodAutoscaler;
+
+    let mut issues = Vec::new();
+
+    let deployments: Api<Deployment> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    let deploy_list = deployments
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| KcError::Config(e.to_string()))?;
+
+    for deploy in deploy_list {
+        let deploy_name = deploy.metadata.name.clone().unwrap_or_default();
+        let deploy_ns = deploy.metadata.namespace.clone().unwrap_or_default();
+
+        if let Some(status) = &deploy.status {
+            let desired = deploy
+                .spec
+                .as_ref()
+                .and_then(|s| s.replicas)
+                .unwrap_or(1);
+            let available = status.available_replicas.unwrap_or(0);
+            let ready = status.ready_replicas.unwrap_or(0);
+            let updated = status.updated_replicas.unwrap_or(0);
+
+            // Check for unavailable replicas
+            if available < desired {
+                let unavailable = desired - available;
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Critical,
+                        DebugCategory::Deployment,
+                        "Deployment",
+                        &deploy_name,
+                        "Replicas Unavailable",
+                        format!(
+                            "{} of {} replicas unavailable",
+                            unavailable, desired
+                        ),
+                    )
+                    .with_namespace(&deploy_ns)
+                    .with_remediation("Check pod status and events for the deployment"),
+                );
+            }
+
+            // Check for rollout issues
+            if let Some(conditions) = &status.conditions {
+                for condition in conditions {
+                    if condition.type_ == "Progressing"
+                        && condition.status == "False"
+                        && condition.reason.as_deref() == Some("ProgressDeadlineExceeded")
+                    {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Critical,
+                                DebugCategory::Deployment,
+                                "Deployment",
+                                &deploy_name,
+                                "Rollout Deadline Exceeded",
+                                "Deployment rollout has exceeded its progress deadline",
+                            )
+                            .with_namespace(&deploy_ns)
+                            .with_remediation(
+                                "Check pod events and consider increasing progressDeadlineSeconds",
+                            ),
+                        );
+                    }
+
+                    if condition.type_ == "Available" && condition.status == "False" {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Critical,
+                                DebugCategory::Deployment,
+                                "Deployment",
+                                &deploy_name,
+                                "Deployment Not Available",
+                                format!(
+                                    "Deployment is not available: {}",
+                                    condition.message.as_deref().unwrap_or("unknown reason")
+                                ),
+                            )
+                            .with_namespace(&deploy_ns)
+                            .with_remediation("Check pod status and events for the deployment"),
+                        );
+                    }
+
+                    if condition.type_ == "ReplicaFailure" && condition.status == "True" {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Critical,
+                                DebugCategory::Deployment,
+                                "Deployment",
+                                &deploy_name,
+                                "Replica Failure",
+                                format!(
+                                    "Deployment has replica failure: {}",
+                                    condition.message.as_deref().unwrap_or("unknown reason")
+                                ),
+                            )
+                            .with_namespace(&deploy_ns)
+                            .with_remediation("Check pod status and events"),
+                        );
+                    }
+                }
+            }
+
+            // Check for stuck rollout (updated != desired)
+            if updated < desired && updated > 0 {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Warning,
+                        DebugCategory::Deployment,
+                        "Deployment",
+                        &deploy_name,
+                        "Rollout In Progress",
+                        format!(
+                            "Rollout in progress: {} of {} replicas updated",
+                            updated, desired
+                        ),
+                    )
+                    .with_namespace(&deploy_ns)
+                    .with_remediation("Monitor rollout progress or check for stuck pods"),
+                );
+            }
+
+            // Check if not ready
+            if ready < desired && ready < available {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Warning,
+                        DebugCategory::Deployment,
+                        "Deployment",
+                        &deploy_name,
+                        "Replicas Not Ready",
+                        format!(
+                            "{} of {} replicas not ready",
+                            desired - ready,
+                            desired
+                        ),
+                    )
+                    .with_namespace(&deploy_ns)
+                    .with_remediation("Check readiness probes and pod status"),
+                );
+            }
+        }
+    }
+
+    // Check HPAs
+    let hpas: Api<HorizontalPodAutoscaler> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    if let Ok(hpa_list) = hpas.list(&ListParams::default()).await {
+        for hpa in hpa_list {
+            let hpa_name = hpa.metadata.name.clone().unwrap_or_default();
+            let hpa_ns = hpa.metadata.namespace.clone().unwrap_or_default();
+
+            if let Some(status) = &hpa.status {
+                let current = status.current_replicas.unwrap_or(0);
+                let desired = status.desired_replicas;
+                let max = hpa
+                    .spec
+                    .as_ref()
+                    .map(|s| s.max_replicas)
+                    .unwrap_or(10);
+
+                // Check if at max replicas
+                if current >= max && desired > current {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Resources,
+                            "HPA",
+                            &hpa_name,
+                            "HPA at Maximum Replicas",
+                            format!(
+                                "HPA is at maximum replicas ({}) but wants {}",
+                                max, desired
+                            ),
+                        )
+                        .with_namespace(&hpa_ns)
+                        .with_remediation("Consider increasing maxReplicas or adding more nodes"),
+                    );
+                }
+
+                // Check for scaling issues
+                if let Some(conditions) = &status.conditions {
+                    for condition in conditions {
+                        if condition.type_ == "ScalingActive" && condition.status == "False" {
+                            issues.push(
+                                DebugIssue::new(
+                                    Severity::Critical,
+                                    DebugCategory::Resources,
+                                    "HPA",
+                                    &hpa_name,
+                                    "HPA Scaling Inactive",
+                                    format!(
+                                        "HPA cannot scale: {}",
+                                        condition.message.as_deref().unwrap_or("unknown reason")
+                                    ),
+                                )
+                                .with_namespace(&hpa_ns)
+                                .with_remediation("Check metrics-server and HPA target reference"),
+                            );
+                        }
+
+                        if condition.type_ == "AbleToScale" && condition.status == "False" {
+                            issues.push(
+                                DebugIssue::new(
+                                    Severity::Critical,
+                                    DebugCategory::Resources,
+                                    "HPA",
+                                    &hpa_name,
+                                    "HPA Unable to Scale",
+                                    format!(
+                                        "HPA unable to scale: {}",
+                                        condition.message.as_deref().unwrap_or("unknown reason")
+                                    ),
+                                )
+                                .with_namespace(&hpa_ns)
+                                .with_remediation("Check HPA target and resource availability"),
+                            );
+                        }
+
+                        if condition.type_ == "ScalingLimited" && condition.status == "True" {
+                            let reason = condition.reason.as_deref().unwrap_or("");
+                            if reason.contains("ReadyPodCount") || reason.contains("TooManyReplicas") {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Warning,
+                                        DebugCategory::Resources,
+                                        "HPA",
+                                        &hpa_name,
+                                        "HPA Scaling Limited",
+                                        format!(
+                                            "HPA scaling is limited: {}",
+                                            condition.message.as_deref().unwrap_or(reason)
+                                        ),
+                                    )
+                                    .with_namespace(&hpa_ns)
+                                    .with_remediation("Review min/max replicas configuration"),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check PodDisruptionBudgets
+    let pdbs: Api<k8s_openapi::api::policy::v1::PodDisruptionBudget> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    if let Ok(pdb_list) = pdbs.list(&ListParams::default()).await {
+        for pdb in pdb_list {
+            let pdb_name = pdb.metadata.name.clone().unwrap_or_default();
+            let pdb_ns = pdb.metadata.namespace.clone().unwrap_or_default();
+
+            if let Some(status) = &pdb.status {
+                let disruptions_allowed = status.disruptions_allowed;
+                let current_healthy = status.current_healthy;
+                let desired_healthy = status.desired_healthy;
+
+                if disruptions_allowed == 0 && current_healthy < desired_healthy {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Resources,
+                            "PDB",
+                            &pdb_name,
+                            "PDB Blocking Disruptions",
+                            format!(
+                                "PDB allows 0 disruptions (current: {}, desired: {}). May block node drains.",
+                                current_healthy, desired_healthy
+                            ),
+                        )
+                        .with_namespace(&pdb_ns)
+                        .with_remediation("Review minAvailable/maxUnavailable settings"),
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check for service issues (no endpoints, selector mismatch)
+pub async fn check_service_issues(
+    client: &Client,
+    namespace: Option<&str>,
+) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::core::v1::{Endpoints, Service};
+    use k8s_openapi::api::discovery::v1::EndpointSlice;
+
+    let mut issues = Vec::new();
+
+    let services: Api<Service> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    let svc_list = services
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| KcError::Config(e.to_string()))?;
+
+    for svc in svc_list {
+        let svc_name = svc.metadata.name.clone().unwrap_or_default();
+        let svc_ns = svc.metadata.namespace.clone().unwrap_or_default();
+
+        // Skip services without selectors (ExternalName, headless without selector)
+        let selector = svc
+            .spec
+            .as_ref()
+            .and_then(|s| s.selector.as_ref());
+
+        if selector.is_none() || selector.map(|s| s.is_empty()).unwrap_or(true) {
+            continue;
+        }
+
+        // Check for LoadBalancer services
+        let svc_type = svc
+            .spec
+            .as_ref()
+            .and_then(|s| s.type_.as_ref())
+            .map(|t| t.as_str())
+            .unwrap_or("ClusterIP");
+
+        if svc_type == "LoadBalancer" {
+            // Check if LoadBalancer has an external IP
+            let has_external_ip = svc
+                .status
+                .as_ref()
+                .and_then(|s| s.load_balancer.as_ref())
+                .and_then(|lb| lb.ingress.as_ref())
+                .map(|ing| !ing.is_empty())
+                .unwrap_or(false);
+
+            if !has_external_ip {
+                // Check how long it's been pending
+                let pending_duration = svc
+                    .metadata
+                    .creation_timestamp
+                    .as_ref()
+                    .map(|ts| {
+                        let now = chrono::Utc::now();
+                        let created: chrono::DateTime<chrono::Utc> = ts.0;
+                        now.signed_duration_since(created).num_seconds()
+                    })
+                    .unwrap_or(0);
+
+                if pending_duration > 300 {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Critical,
+                            DebugCategory::Service,
+                            "Service",
+                            &svc_name,
+                            "LoadBalancer Pending",
+                            format!(
+                                "LoadBalancer service has no external IP after {} seconds",
+                                pending_duration
+                            ),
+                        )
+                        .with_namespace(&svc_ns)
+                        .with_remediation(
+                            "Check AWS Load Balancer Controller logs and service events",
+                        ),
+                    );
+                }
+            }
+        }
+
+        // Check endpoints
+        let endpoints: Api<Endpoints> = Api::namespaced(client.clone(), &svc_ns);
+        if let Ok(ep) = endpoints.get(&svc_name).await {
+            let has_endpoints = ep
+                .subsets
+                .as_ref()
+                .map(|subsets| {
+                    subsets
+                        .iter()
+                        .any(|s| s.addresses.as_ref().map(|a| !a.is_empty()).unwrap_or(false))
+                })
+                .unwrap_or(false);
+
+            if !has_endpoints {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Critical,
+                        DebugCategory::Service,
+                        "Service",
+                        &svc_name,
+                        "No Endpoints",
+                        "Service has no ready endpoints. Traffic will fail.",
+                    )
+                    .with_namespace(&svc_ns)
+                    .with_remediation(
+                        "Check if pods match the service selector and are in Ready state",
+                    ),
+                );
+            }
+        }
+
+        // Check EndpointSlices for unhealthy endpoints
+        let endpoint_slices: Api<EndpointSlice> = Api::namespaced(client.clone(), &svc_ns);
+        let label_selector = format!("kubernetes.io/service-name={}", svc_name);
+        if let Ok(ep_slices) = endpoint_slices
+            .list(&ListParams::default().labels(&label_selector))
+            .await
+        {
+            for slice in ep_slices {
+                let endpoints = &slice.endpoints;
+                let unhealthy_count = endpoints
+                    .iter()
+                    .filter(|ep| {
+                        ep.conditions
+                            .as_ref()
+                            .and_then(|c| c.ready)
+                            .map(|r| !r)
+                            .unwrap_or(false)
+                    })
+                    .count();
+
+                if unhealthy_count > 0 && !endpoints.is_empty() {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Service,
+                            "Service",
+                            &svc_name,
+                                "Unhealthy Endpoints",
+                                format!(
+                                    "{} of {} endpoints are not ready",
+                                    unhealthy_count,
+                                    endpoints.len()
+                                ),
+                            )
+                            .with_namespace(&svc_ns)
+                            .with_remediation("Check pod readiness probes and pod status"),
+                        );
+                    }
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check for ConfigMap and Secret issues
+pub async fn check_config_issues(
+    client: &Client,
+    namespace: Option<&str>,
+) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::core::v1::{ConfigMap, Secret};
+
+    let mut issues = Vec::new();
+
+    // Check ConfigMaps
+    let configmaps: Api<ConfigMap> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    let cm_list = configmaps
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| KcError::Config(e.to_string()))?;
+
+    for cm in cm_list {
+        let cm_name = cm.metadata.name.clone().unwrap_or_default();
+        let cm_ns = cm.metadata.namespace.clone().unwrap_or_default();
+
+        // Check for overly large ConfigMaps (> 1MB can cause issues)
+        let size: usize = cm
+            .data
+            .as_ref()
+            .map(|d| d.values().map(|v| v.len()).sum())
+            .unwrap_or(0)
+            + cm.binary_data
+                .as_ref()
+                .map(|d| d.values().map(|v| v.0.len()).sum())
+                .unwrap_or(0);
+
+        if size > 1_000_000 {
+            issues.push(
+                DebugIssue::new(
+                    Severity::Warning,
+                    DebugCategory::Resources,
+                    "ConfigMap",
+                    &cm_name,
+                    "Large ConfigMap",
+                    format!(
+                        "ConfigMap is {} bytes, exceeding 1MB may cause issues",
+                        size
+                    ),
+                )
+                .with_namespace(&cm_ns)
+                .with_remediation(
+                    "Consider splitting into multiple ConfigMaps or using external storage",
+                ),
+            );
+        }
+    }
+
+    // Check Secrets
+    let secrets: Api<Secret> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    let secret_list = secrets
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| KcError::Config(e.to_string()))?;
+
+    for secret in secret_list {
+        let secret_name = secret.metadata.name.clone().unwrap_or_default();
+        let secret_ns = secret.metadata.namespace.clone().unwrap_or_default();
+
+        // Skip service account tokens and helm secrets
+        let secret_type = secret.type_.as_deref().unwrap_or("");
+        if secret_type == "kubernetes.io/service-account-token"
+            || secret_type == "helm.sh/release.v1"
+        {
+            continue;
+        }
+
+        // Check for overly large Secrets
+        let size: usize = secret
+            .data
+            .as_ref()
+            .map(|d| d.values().map(|v| v.0.len()).sum())
+            .unwrap_or(0);
+
+        if size > 1_000_000 {
+            issues.push(
+                DebugIssue::new(
+                    Severity::Warning,
+                    DebugCategory::Resources,
+                    "Secret",
+                    &secret_name,
+                    "Large Secret",
+                    format!(
+                        "Secret is {} bytes, exceeding 1MB may cause issues",
+                        size
+                    ),
+                )
+                .with_namespace(&secret_ns)
+                .with_remediation(
+                    "Consider using external secret management like AWS Secrets Manager",
+                ),
+            );
+        }
+    }
+
+    // Check for pods referencing missing ConfigMaps/Secrets via events
+    let events: Api<k8s_openapi::api::core::v1::Event> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    if let Ok(event_list) = events.list(&ListParams::default()).await {
+        for event in event_list {
+            let reason = event.reason.as_deref().unwrap_or("");
+            let message = event.message.as_deref().unwrap_or("");
+            let event_ns = event.metadata.namespace.clone().unwrap_or_default();
+            let involved = event
+                .involved_object
+                .name
+                .clone()
+                .unwrap_or_default();
+
+            if reason == "FailedMount" {
+                if message.contains("configmap") && message.contains("not found") {
+                    let cm_name = extract_resource_name(message, "configmap");
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Critical,
+                            DebugCategory::Pod,
+                            "Pod",
+                            &involved,
+                            "ConfigMap Not Found",
+                            format!("Pod references missing ConfigMap: {}", cm_name),
+                        )
+                        .with_namespace(&event_ns)
+                        .with_remediation("Create the ConfigMap or fix the reference"),
+                    );
+                }
+
+                if message.contains("secret") && message.contains("not found") {
+                    let secret_name = extract_resource_name(message, "secret");
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Critical,
+                            DebugCategory::Pod,
+                            "Pod",
+                            &involved,
+                            "Secret Not Found",
+                            format!("Pod references missing Secret: {}", secret_name),
+                        )
+                        .with_namespace(&event_ns)
+                        .with_remediation("Create the Secret or fix the reference"),
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Helper to extract resource name from event message
+fn extract_resource_name(message: &str, resource_type: &str) -> String {
+    // Try to extract name from patterns like:
+    // "configmap \"my-config\" not found"
+    // "secret 'my-secret' not found"
+    let patterns = [
+        format!("{} \"", resource_type),
+        format!("{} '", resource_type),
+        format!("{}s \"", resource_type),
+        format!("{}s '", resource_type),
+    ];
+
+    for pattern in &patterns {
+        if let Some(start) = message.find(pattern.as_str()) {
+            let after_pattern = &message[start + pattern.len()..];
+            if let Some(end) = after_pattern.find(|c| c == '"' || c == '\'') {
+                return after_pattern[..end].to_string();
+            }
+        }
+    }
+
+    "unknown".to_string()
+}
+
+/// Check for RBAC issues (cluster-admin, wildcard permissions)
+pub async fn check_rbac_issues(
+    client: &Client,
+    namespace: Option<&str>,
+) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
+
+    let mut issues = Vec::new();
+
+    // Check ClusterRoleBindings for cluster-admin
+    let crbs: Api<ClusterRoleBinding> = Api::all(client.clone());
+    if let Ok(crb_list) = crbs.list(&ListParams::default()).await {
+        for crb in crb_list {
+            let crb_name = crb.metadata.name.clone().unwrap_or_default();
+
+            // Skip system bindings
+            if crb_name.starts_with("system:") || crb_name.starts_with("kubeadm:") {
+                continue;
+            }
+
+            if crb.role_ref.name == "cluster-admin" {
+                let subjects = crb.subjects.as_ref().map(|s| s.len()).unwrap_or(0);
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Warning,
+                        DebugCategory::Security,
+                        "ClusterRoleBinding",
+                        &crb_name,
+                        "cluster-admin Binding",
+                        format!(
+                            "ClusterRoleBinding grants cluster-admin to {} subjects",
+                            subjects
+                        ),
+                    )
+                    .with_remediation(
+                        "Review if all subjects need full cluster admin access",
+                    ),
+                );
+            }
+        }
+    }
+
+    // Check ClusterRoles for wildcard permissions
+    let crs: Api<ClusterRole> = Api::all(client.clone());
+    if let Ok(cr_list) = crs.list(&ListParams::default()).await {
+        for cr in cr_list {
+            let cr_name = cr.metadata.name.clone().unwrap_or_default();
+
+            // Skip system roles
+            if cr_name.starts_with("system:") || cr_name == "cluster-admin" {
+                continue;
+            }
+
+            if let Some(rules) = &cr.rules {
+                for rule in rules {
+                    let has_wildcard_verbs = rule
+                        .verbs
+                        .iter()
+                        .any(|v| v == "*");
+                    let has_wildcard_resources = rule
+                        .resources
+                        .as_ref()
+                        .map(|r| r.iter().any(|res| res == "*"))
+                        .unwrap_or(false);
+                    let has_wildcard_api_groups = rule
+                        .api_groups
+                        .as_ref()
+                        .map(|g| g.iter().any(|group| group == "*"))
+                        .unwrap_or(false);
+
+                    if has_wildcard_verbs && has_wildcard_resources {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Warning,
+                                DebugCategory::Security,
+                                "ClusterRole",
+                                &cr_name,
+                                "Wildcard Permissions",
+                                "ClusterRole has wildcard verbs on wildcard resources (*:*)",
+                            )
+                            .with_remediation(
+                                "Use least-privilege principle: specify explicit verbs and resources",
+                            ),
+                        );
+                        break;
+                    }
+
+                    if has_wildcard_api_groups && has_wildcard_resources {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Warning,
+                                DebugCategory::Security,
+                                "ClusterRole",
+                                &cr_name,
+                                "Broad API Group Access",
+                                "ClusterRole has access to all API groups and resources",
+                            )
+                            .with_remediation(
+                                "Restrict to specific API groups and resources",
+                            ),
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Check Roles for dangerous permissions
+    let roles: Api<Role> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    if let Ok(role_list) = roles.list(&ListParams::default()).await {
+        for role in role_list {
+            let role_name = role.metadata.name.clone().unwrap_or_default();
+            let role_ns = role.metadata.namespace.clone().unwrap_or_default();
+
+            if let Some(rules) = &role.rules {
+                for rule in rules {
+                    // Check for secrets access
+                    let accesses_secrets = rule
+                        .resources
+                        .as_ref()
+                        .map(|r| r.iter().any(|res| res == "secrets" || res == "*"))
+                        .unwrap_or(false);
+
+                    let can_read_secrets = accesses_secrets
+                        && rule.verbs.iter().any(|v| {
+                            v == "*" || v == "get" || v == "list" || v == "watch"
+                        });
+
+                    if can_read_secrets {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Info,
+                                DebugCategory::Security,
+                                "Role",
+                                &role_name,
+                                "Secrets Read Access",
+                                "Role grants read access to secrets",
+                            )
+                            .with_namespace(&role_ns)
+                            .with_remediation(
+                                "Ensure only necessary roles can read secrets",
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Check for pods using default ServiceAccount
+    let pods: Api<Pod> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    if let Ok(pod_list) = pods.list(&ListParams::default()).await {
+        for pod in pod_list {
+            let pod_name = pod.metadata.name.clone().unwrap_or_default();
+            let pod_ns = pod.metadata.namespace.clone().unwrap_or_default();
+
+            // Skip system namespaces
+            if pod_ns == "kube-system" || pod_ns == "kube-public" || pod_ns == "kube-node-lease" {
+                continue;
+            }
+
+            let sa_name = pod
+                .spec
+                .as_ref()
+                .and_then(|s| s.service_account_name.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or("default");
+
+            if sa_name == "default" {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Info,
+                        DebugCategory::Security,
+                        "Pod",
+                        &pod_name,
+                        "Using Default ServiceAccount",
+                        "Pod is using the default ServiceAccount",
+                    )
+                    .with_namespace(&pod_ns)
+                    .with_remediation(
+                        "Create a dedicated ServiceAccount with minimal permissions",
+                    ),
+                );
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check for scheduling issues (resources, affinity, taints)
+pub async fn check_scheduling_issues(
+    client: &Client,
+    namespace: Option<&str>,
+) -> Result<Vec<DebugIssue>, KcError> {
+    let mut issues = Vec::new();
+
+    // Check events for scheduling failures
+    let events: Api<k8s_openapi::api::core::v1::Event> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    if let Ok(event_list) = events.list(&ListParams::default()).await {
+        for event in event_list {
+            let reason = event.reason.as_deref().unwrap_or("");
+            let message = event.message.as_deref().unwrap_or("");
+            let event_ns = event.metadata.namespace.clone().unwrap_or_default();
+            let involved = event
+                .involved_object
+                .name
+                .clone()
+                .unwrap_or_default();
+            let kind = event
+                .involved_object
+                .kind
+                .as_deref()
+                .unwrap_or("Unknown");
+
+            if reason == "FailedScheduling" {
+                let severity = Severity::Critical;
+
+                if message.contains("Insufficient cpu") {
+                    issues.push(
+                        DebugIssue::new(
+                            severity,
+                            DebugCategory::Resources,
+                            kind,
+                            &involved,
+                            "Insufficient CPU",
+                            format!("Cannot schedule: {}", message),
+                        )
+                        .with_namespace(&event_ns)
+                        .with_remediation(
+                            "Reduce CPU requests, add more nodes, or use Cluster Autoscaler",
+                        ),
+                    );
+                } else if message.contains("Insufficient memory") {
+                    issues.push(
+                        DebugIssue::new(
+                            severity,
+                            DebugCategory::Resources,
+                            kind,
+                            &involved,
+                            "Insufficient Memory",
+                            format!("Cannot schedule: {}", message),
+                        )
+                        .with_namespace(&event_ns)
+                        .with_remediation(
+                            "Reduce memory requests, add more nodes, or use Cluster Autoscaler",
+                        ),
+                    );
+                } else if message.contains("node(s) didn't match node selector")
+                    || message.contains("node(s) didn't match Pod's node affinity")
+                {
+                    issues.push(
+                        DebugIssue::new(
+                            severity,
+                            DebugCategory::Pod,
+                            kind,
+                            &involved,
+                            "Node Selector/Affinity No Match",
+                            format!("Cannot schedule: {}", message),
+                        )
+                        .with_namespace(&event_ns)
+                        .with_remediation(
+                            "Review nodeSelector/nodeAffinity and ensure matching nodes exist",
+                        ),
+                    );
+                } else if message.contains("had taint") || message.contains("untolerated taint") {
+                    issues.push(
+                        DebugIssue::new(
+                            severity,
+                            DebugCategory::Pod,
+                            kind,
+                            &involved,
+                            "Taints Not Tolerated",
+                            format!("Cannot schedule: {}", message),
+                        )
+                        .with_namespace(&event_ns)
+                        .with_remediation(
+                            "Add tolerations for the node taints or remove taints from nodes",
+                        ),
+                    );
+                } else if message.contains("pod affinity") || message.contains("pod anti-affinity") {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Pod,
+                            kind,
+                            &involved,
+                            "Pod Affinity Conflict",
+                            format!("Scheduling constrained by pod affinity: {}", message),
+                        )
+                        .with_namespace(&event_ns)
+                        .with_remediation(
+                            "Review podAffinity/podAntiAffinity rules and ensure adequate nodes",
+                        ),
+                    );
+                } else if message.contains("volume") {
+                    issues.push(
+                        DebugIssue::new(
+                            severity,
+                            DebugCategory::Storage,
+                            kind,
+                            &involved,
+                            "Volume Scheduling Issue",
+                            format!("Volume scheduling problem: {}", message),
+                        )
+                        .with_namespace(&event_ns)
+                        .with_remediation(
+                            "Check PVC/PV availability and zone constraints",
+                        ),
+                    );
+                } else if message.contains("TopologySpreadConstraint") {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Pod,
+                            kind,
+                            &involved,
+                            "Topology Spread Constraint",
+                            format!("Topology constraint issue: {}", message),
+                        )
+                        .with_namespace(&event_ns)
+                        .with_remediation(
+                            "Review topologySpreadConstraints and node distribution",
+                        ),
+                    );
+                } else {
+                    // Generic scheduling failure
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Pod,
+                            kind,
+                            &involved,
+                            "Scheduling Failed",
+                            format!("Failed to schedule: {}", message),
+                        )
+                        .with_namespace(&event_ns)
+                        .with_remediation("Check pod requirements and node resources"),
+                    );
+                }
+            }
+
+            // Check for preemption events
+            if reason == "Preempted" {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Info,
+                        DebugCategory::Pod,
+                        kind,
+                        &involved,
+                        "Pod Preempted",
+                        format!("Pod was preempted: {}", message),
+                    )
+                    .with_namespace(&event_ns)
+                    .with_remediation(
+                        "Review PriorityClass settings and resource requests",
+                    ),
+                );
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check for StatefulSet issues
+pub async fn check_statefulset_issues(
+    client: &Client,
+    namespace: Option<&str>,
+) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::apps::v1::StatefulSet;
+    use k8s_openapi::api::core::v1::{PersistentVolumeClaim, Service};
+
+    let mut issues = Vec::new();
+
+    let statefulsets: Api<StatefulSet> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    let sts_list = statefulsets
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| KcError::Config(e.to_string()))?;
+
+    for sts in sts_list {
+        let sts_name = sts.metadata.name.clone().unwrap_or_default();
+        let sts_ns = sts.metadata.namespace.clone().unwrap_or_default();
+
+        if let Some(status) = &sts.status {
+            let desired = sts
+                .spec
+                .as_ref()
+                .and_then(|s| s.replicas)
+                .unwrap_or(1);
+            let ready = status.ready_replicas.unwrap_or(0);
+            let current = status.current_replicas.unwrap_or(0);
+            let updated = status.updated_replicas.unwrap_or(0);
+
+            // Check for unavailable replicas
+            if ready < desired {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Critical,
+                        DebugCategory::Deployment,
+                        "StatefulSet",
+                        &sts_name,
+                        "StatefulSet Not Ready",
+                        format!(
+                            "{} of {} replicas ready",
+                            ready, desired
+                        ),
+                    )
+                    .with_namespace(&sts_ns)
+                    .with_remediation("Check pod status and PVC bindings"),
+                );
+            }
+
+            // Check for update in progress
+            if updated < desired && updated > 0 {
+                let current_revision = status.current_revision.as_deref().unwrap_or("unknown");
+                let update_revision = status.update_revision.as_deref().unwrap_or("unknown");
+
+                if current_revision != update_revision {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Deployment,
+                            "StatefulSet",
+                            &sts_name,
+                            "Rolling Update In Progress",
+                            format!(
+                                "Update in progress: {} of {} pods updated",
+                                updated, desired
+                            ),
+                        )
+                        .with_namespace(&sts_ns)
+                        .with_remediation("Monitor rollout progress"),
+                    );
+                }
+            }
+
+            // Check for collision count (indicates naming conflicts)
+            if let Some(collision_count) = status.collision_count {
+                if collision_count > 0 {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Deployment,
+                            "StatefulSet",
+                            &sts_name,
+                            "Pod Name Collision",
+                            format!(
+                                "StatefulSet has {} name collisions",
+                                collision_count
+                            ),
+                        )
+                        .with_namespace(&sts_ns)
+                        .with_remediation("Check for orphaned pods with same name"),
+                    );
+                }
+            }
+        }
+
+        // Check for headless service
+        if let Some(spec) = &sts.spec {
+            if let Some(service_name) = &spec.service_name {
+                let services: Api<Service> = Api::namespaced(client.clone(), &sts_ns);
+
+                if services.get(service_name).await.is_err() {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Critical,
+                            DebugCategory::Service,
+                            "StatefulSet",
+                            &sts_name,
+                            "Headless Service Missing",
+                            format!(
+                                "StatefulSet references service '{}' which does not exist",
+                                service_name
+                            ),
+                        )
+                        .with_namespace(&sts_ns)
+                        .with_remediation("Create the headless service for the StatefulSet"),
+                    );
+                }
+            }
+
+            // Check PVCs for the StatefulSet
+            if let Some(vct) = &spec.volume_claim_templates {
+                let pvcs: Api<PersistentVolumeClaim> = Api::namespaced(client.clone(), &sts_ns);
+                let replicas = spec.replicas.unwrap_or(1);
+
+                for template in vct {
+                    let pvc_base_name = template.metadata.name.clone().unwrap_or_default();
+
+                    for i in 0..replicas {
+                        let pvc_name = format!("{}-{}-{}", pvc_base_name, sts_name, i);
+
+                        if let Ok(pvc) = pvcs.get(&pvc_name).await {
+                            let phase = pvc
+                                .status
+                                .as_ref()
+                                .and_then(|s| s.phase.as_ref())
+                                .map(|p| p.as_str())
+                                .unwrap_or("Unknown");
+
+                            if phase != "Bound" {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Critical,
+                                        DebugCategory::Storage,
+                                        "PVC",
+                                        &pvc_name,
+                                        "PVC Not Bound",
+                                        format!("PVC is in {} phase", phase),
+                                    )
+                                    .with_namespace(&sts_ns)
+                                    .with_remediation(
+                                        "Check PVC events and StorageClass provisioner",
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check for Job and CronJob issues
+pub async fn check_job_issues(
+    client: &Client,
+    namespace: Option<&str>,
+) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::batch::v1::{CronJob, Job};
+
+    let mut issues = Vec::new();
+
+    // Check Jobs
+    let jobs: Api<Job> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    if let Ok(job_list) = jobs.list(&ListParams::default()).await {
+        for job in job_list {
+            let job_name = job.metadata.name.clone().unwrap_or_default();
+            let job_ns = job.metadata.namespace.clone().unwrap_or_default();
+
+            if let Some(status) = &job.status {
+                // Check for failed jobs
+                if let Some(failed) = status.failed {
+                    if failed > 0 {
+                        let backoff_limit = job
+                            .spec
+                            .as_ref()
+                            .and_then(|s| s.backoff_limit)
+                            .unwrap_or(6);
+
+                        if failed >= backoff_limit {
+                            issues.push(
+                                DebugIssue::new(
+                                    Severity::Critical,
+                                    DebugCategory::Pod,
+                                    "Job",
+                                    &job_name,
+                                    "Job Failed",
+                                    format!(
+                                        "Job has failed {} times, backoff limit reached",
+                                        failed
+                                    ),
+                                )
+                                .with_namespace(&job_ns)
+                                .with_remediation("Check job pod logs for failure reason"),
+                            );
+                        } else {
+                            issues.push(
+                                DebugIssue::new(
+                                    Severity::Warning,
+                                    DebugCategory::Pod,
+                                    "Job",
+                                    &job_name,
+                                    "Job Failing",
+                                    format!(
+                                        "Job has failed {} of {} attempts",
+                                        failed, backoff_limit
+                                    ),
+                                )
+                                .with_namespace(&job_ns)
+                                .with_remediation("Check job pod logs for failure reason"),
+                            );
+                        }
+                    }
+                }
+
+                // Check for deadline exceeded
+                if let Some(conditions) = &status.conditions {
+                    for condition in conditions {
+                        if condition.type_ == "Failed"
+                            && condition.status == "True"
+                            && condition.reason.as_deref() == Some("DeadlineExceeded")
+                        {
+                            issues.push(
+                                DebugIssue::new(
+                                    Severity::Warning,
+                                    DebugCategory::Pod,
+                                    "Job",
+                                    &job_name,
+                                    "Job Deadline Exceeded",
+                                    "Job exceeded its activeDeadlineSeconds",
+                                )
+                                .with_namespace(&job_ns)
+                                .with_remediation(
+                                    "Increase activeDeadlineSeconds or optimize job performance",
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check CronJobs
+    let cronjobs: Api<CronJob> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    if let Ok(cj_list) = cronjobs.list(&ListParams::default()).await {
+        for cj in cj_list {
+            let cj_name = cj.metadata.name.clone().unwrap_or_default();
+            let cj_ns = cj.metadata.namespace.clone().unwrap_or_default();
+
+            if let Some(spec) = &cj.spec {
+                // Check if suspended
+                if spec.suspend == Some(true) {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Info,
+                            DebugCategory::Pod,
+                            "CronJob",
+                            &cj_name,
+                            "CronJob Suspended",
+                            "CronJob is currently suspended",
+                        )
+                        .with_namespace(&cj_ns)
+                        .with_remediation("Set suspend: false to enable scheduling"),
+                    );
+                }
+            }
+
+            if let Some(status) = &cj.status {
+                // Check for missed schedules
+                if let Some(last_schedule) = &status.last_schedule_time {
+                    let now = chrono::Utc::now();
+                    let last: chrono::DateTime<chrono::Utc> = last_schedule.0;
+                    let since_last = now.signed_duration_since(last).num_hours();
+
+                    // Alert if no runs in 24+ hours (may indicate issues)
+                    if since_last > 24 {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Warning,
+                                DebugCategory::Pod,
+                                "CronJob",
+                                &cj_name,
+                                "CronJob Not Running",
+                                format!(
+                                    "No jobs scheduled in {} hours",
+                                    since_last
+                                ),
+                            )
+                            .with_namespace(&cj_ns)
+                            .with_remediation("Check cron schedule and job history"),
+                        );
+                    }
+                }
+
+                // Check for too many active jobs (concurrency issue)
+                let active_count = status.active.as_ref().map(|a| a.len()).unwrap_or(0);
+                if active_count > 3 {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Pod,
+                            "CronJob",
+                            &cj_name,
+                            "Many Active Jobs",
+                            format!(
+                                "CronJob has {} active jobs, may indicate job overlap",
+                                active_count
+                            ),
+                        )
+                        .with_namespace(&cj_ns)
+                        .with_remediation(
+                            "Review concurrencyPolicy and job completion time",
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check for Ingress issues
+pub async fn check_ingress_issues(
+    client: &Client,
+    namespace: Option<&str>,
+) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::networking::v1::Ingress;
+    use k8s_openapi::api::core::v1::{Secret, Service};
+
+    let mut issues = Vec::new();
+
+    let ingresses: Api<Ingress> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    let ing_list = ingresses
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| KcError::Config(e.to_string()))?;
+
+    // Track hosts for conflict detection
+    let mut host_ingresses: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+
+    for ing in &ing_list {
+        let ing_name = ing.metadata.name.clone().unwrap_or_default();
+        let ing_ns = ing.metadata.namespace.clone().unwrap_or_default();
+
+        // Check for missing address
+        let has_address = ing
+            .status
+            .as_ref()
+            .and_then(|s| s.load_balancer.as_ref())
+            .and_then(|lb| lb.ingress.as_ref())
+            .map(|i| !i.is_empty())
+            .unwrap_or(false);
+
+        if !has_address {
+            // Check how long ingress has existed
+            let age = ing
+                .metadata
+                .creation_timestamp
+                .as_ref()
+                .map(|ts| {
+                    let now = chrono::Utc::now();
+                    let created: chrono::DateTime<chrono::Utc> = ts.0;
+                    now.signed_duration_since(created).num_seconds()
+                })
+                .unwrap_or(0);
+
+            if age > 300 {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Critical,
+                        DebugCategory::Ingress,
+                        "Ingress",
+                        &ing_name,
+                        "Ingress No Address",
+                        "Ingress has no load balancer address after 5+ minutes",
+                    )
+                    .with_namespace(&ing_ns)
+                    .with_remediation(
+                        "Check ingress controller logs and AWS Load Balancer Controller status",
+                    ),
+                );
+            }
+        }
+
+        if let Some(spec) = &ing.spec {
+            // Check TLS secrets
+            if let Some(tls_configs) = &spec.tls {
+                let secrets: Api<Secret> = Api::namespaced(client.clone(), &ing_ns);
+
+                for tls in tls_configs {
+                    if let Some(secret_name) = &tls.secret_name {
+                        if secrets.get(secret_name).await.is_err() {
+                            issues.push(
+                                DebugIssue::new(
+                                    Severity::Critical,
+                                    DebugCategory::Ingress,
+                                    "Ingress",
+                                    &ing_name,
+                                    "TLS Secret Missing",
+                                    format!("TLS secret '{}' not found", secret_name),
+                                )
+                                .with_namespace(&ing_ns)
+                                .with_remediation(
+                                    "Create the TLS secret or use cert-manager for auto-provisioning",
+                                ),
+                            );
+                        }
+                    }
+
+                    // Track hosts for conflict detection
+                    if let Some(hosts) = &tls.hosts {
+                        for host in hosts {
+                            host_ingresses
+                                .entry(host.clone())
+                                .or_default()
+                                .push(format!("{}/{}", ing_ns, ing_name));
+                        }
+                    }
+                }
+            }
+
+            // Check backend services
+            if let Some(rules) = &spec.rules {
+                let services: Api<Service> = Api::namespaced(client.clone(), &ing_ns);
+
+                for rule in rules {
+                    if let Some(host) = &rule.host {
+                        host_ingresses
+                            .entry(host.clone())
+                            .or_default()
+                            .push(format!("{}/{}", ing_ns, ing_name));
+                    }
+
+                    if let Some(http) = &rule.http {
+                        for path in &http.paths {
+                            if let Some(backend) = &path.backend.service {
+                                let svc_name = &backend.name;
+
+                                if services.get(svc_name).await.is_err() {
+                                    issues.push(
+                                        DebugIssue::new(
+                                            Severity::Critical,
+                                            DebugCategory::Ingress,
+                                            "Ingress",
+                                            &ing_name,
+                                            "Backend Service Missing",
+                                            format!(
+                                                "Backend service '{}' not found",
+                                                svc_name
+                                            ),
+                                        )
+                                        .with_namespace(&ing_ns)
+                                        .with_remediation("Create the backend service"),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check for host conflicts
+    for (host, ingresses) in host_ingresses {
+        if ingresses.len() > 1 {
+            // Deduplicate
+            let unique: std::collections::HashSet<_> = ingresses.into_iter().collect();
+            if unique.len() > 1 {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Warning,
+                        DebugCategory::Ingress,
+                        "Ingress",
+                        &host,
+                        "Host Conflict",
+                        format!(
+                            "Host '{}' is defined in multiple Ingresses: {:?}",
+                            host,
+                            unique.iter().collect::<Vec<_>>()
+                        ),
+                    )
+                    .with_remediation("Consolidate rules or use different hosts"),
+                );
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check for webhook issues (validation, mutation timeouts)
+pub async fn check_webhook_issues(client: &Client) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::admissionregistration::v1::{
+        MutatingWebhookConfiguration, ValidatingWebhookConfiguration,
+    };
+
+    let mut issues = Vec::new();
+
+    // Check ValidatingWebhookConfigurations
+    let vwcs: Api<ValidatingWebhookConfiguration> = Api::all(client.clone());
+    if let Ok(vwc_list) = vwcs.list(&ListParams::default()).await {
+        let mut total_webhooks = 0;
+
+        for vwc in vwc_list {
+            let vwc_name = vwc.metadata.name.clone().unwrap_or_default();
+
+            if let Some(webhooks) = &vwc.webhooks {
+                total_webhooks += webhooks.len();
+
+                for webhook in webhooks {
+                    let wh_name = &webhook.name;
+
+                    // Check failure policy
+                    let failure_policy = webhook.failure_policy.as_deref().unwrap_or("Fail");
+                    if failure_policy == "Fail" {
+                        // Check if service is available
+                        if let Some(svc_ref) = &webhook.client_config.service {
+                            let svc_ns = if svc_ref.namespace.is_empty() { "default" } else { &svc_ref.namespace };
+                            let svc_name = &svc_ref.name;
+
+                            let services: Api<k8s_openapi::api::core::v1::Service> =
+                                Api::namespaced(client.clone(), svc_ns);
+
+                            if services.get(svc_name).await.is_err() {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Critical,
+                                        DebugCategory::Security,
+                                        "ValidatingWebhook",
+                                        wh_name,
+                                        "Webhook Service Unavailable",
+                                        format!(
+                                            "Webhook '{}' service '{}/{}' not found (failurePolicy=Fail)",
+                                            wh_name, svc_ns, svc_name
+                                        ),
+                                    )
+                                    .with_remediation(
+                                        "Deploy the webhook service or change failurePolicy to Ignore",
+                                    ),
+                                );
+                            }
+                        }
+                    }
+
+                    // Check timeout
+                    let timeout = webhook.timeout_seconds.unwrap_or(10);
+                    if timeout > 15 {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Warning,
+                                DebugCategory::Security,
+                                "ValidatingWebhook",
+                                wh_name,
+                                "High Webhook Timeout",
+                                format!(
+                                    "Webhook '{}' has {}s timeout, may cause API latency",
+                                    wh_name, timeout
+                                ),
+                            )
+                            .with_remediation("Consider reducing timeout to under 10 seconds"),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Check for too many webhooks
+        if total_webhooks > 20 {
+            issues.push(
+                DebugIssue::new(
+                    Severity::Info,
+                    DebugCategory::Security,
+                    "Webhook",
+                    "cluster",
+                    "Many Validating Webhooks",
+                    format!(
+                        "{} validating webhooks configured, may impact API performance",
+                        total_webhooks
+                    ),
+                )
+                .with_remediation("Review if all webhooks are necessary"),
+            );
+        }
+    }
+
+    // Check MutatingWebhookConfigurations
+    let mwcs: Api<MutatingWebhookConfiguration> = Api::all(client.clone());
+    if let Ok(mwc_list) = mwcs.list(&ListParams::default()).await {
+        let mut total_webhooks = 0;
+
+        for mwc in mwc_list {
+            let mwc_name = mwc.metadata.name.clone().unwrap_or_default();
+
+            if let Some(webhooks) = &mwc.webhooks {
+                total_webhooks += webhooks.len();
+
+                for webhook in webhooks {
+                    let wh_name = &webhook.name;
+
+                    // Check failure policy
+                    let failure_policy = webhook.failure_policy.as_deref().unwrap_or("Fail");
+                    if failure_policy == "Fail" {
+                        if let Some(svc_ref) = &webhook.client_config.service {
+                            let svc_ns = if svc_ref.namespace.is_empty() { "default" } else { &svc_ref.namespace };
+                            let svc_name = &svc_ref.name;
+
+                            let services: Api<k8s_openapi::api::core::v1::Service> =
+                                Api::namespaced(client.clone(), svc_ns);
+
+                            if services.get(svc_name).await.is_err() {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Critical,
+                                        DebugCategory::Security,
+                                        "MutatingWebhook",
+                                        wh_name,
+                                        "Webhook Service Unavailable",
+                                        format!(
+                                            "Webhook '{}' service '{}/{}' not found (failurePolicy=Fail)",
+                                            wh_name, svc_ns, svc_name
+                                        ),
+                                    )
+                                    .with_remediation(
+                                        "Deploy the webhook service or change failurePolicy to Ignore",
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if total_webhooks > 20 {
+            issues.push(
+                DebugIssue::new(
+                    Severity::Info,
+                    DebugCategory::Security,
+                    "Webhook",
+                    "cluster",
+                    "Many Mutating Webhooks",
+                    format!(
+                        "{} mutating webhooks configured, may impact API performance",
+                        total_webhooks
+                    ),
+                )
+                .with_remediation("Review if all webhooks are necessary"),
+            );
+        }
+    }
+
+    // Check events for webhook failures
+    let events: Api<k8s_openapi::api::core::v1::Event> = Api::all(client.clone());
+    if let Ok(event_list) = events.list(&ListParams::default()).await {
+        for event in event_list {
+            let message = event.message.as_deref().unwrap_or("");
+            let reason = event.reason.as_deref().unwrap_or("");
+
+            if message.contains("webhook") && message.contains("timeout") {
+                let involved = event
+                    .involved_object
+                    .name
+                    .clone()
+                    .unwrap_or_default();
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Warning,
+                        DebugCategory::Security,
+                        "Webhook",
+                        &involved,
+                        "Webhook Timeout",
+                        format!("Webhook timeout detected: {}", message),
+                    )
+                    .with_remediation("Check webhook service health and network connectivity"),
+                );
+            }
+
+            if reason == "FailedAdmission" || message.contains("admission webhook") {
+                let involved = event
+                    .involved_object
+                    .name
+                    .clone()
+                    .unwrap_or_default();
+                let event_ns = event.metadata.namespace.clone().unwrap_or_default();
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Warning,
+                        DebugCategory::Security,
+                        "Webhook",
+                        &involved,
+                        "Admission Webhook Rejected",
+                        format!("Resource rejected by admission webhook: {}", message),
+                    )
+                    .with_namespace(&event_ns)
+                    .with_remediation("Review webhook rules or fix resource spec"),
+                );
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check for ResourceQuota and LimitRange issues
+pub async fn check_quota_issues(
+    client: &Client,
+    namespace: Option<&str>,
+) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::core::v1::{LimitRange, Namespace, ResourceQuota};
+
+    let mut issues = Vec::new();
+
+    // Check ResourceQuotas
+    let quotas: Api<ResourceQuota> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    if let Ok(quota_list) = quotas.list(&ListParams::default()).await {
+        for quota in quota_list {
+            let quota_name = quota.metadata.name.clone().unwrap_or_default();
+            let quota_ns = quota.metadata.namespace.clone().unwrap_or_default();
+
+            if let Some(status) = &quota.status {
+                let hard = status.hard.as_ref();
+                let used = status.used.as_ref();
+
+                if let (Some(hard), Some(used)) = (hard, used) {
+                    for (resource, hard_val) in hard {
+                        if let Some(used_val) = used.get(resource) {
+                            // Parse quantities
+                            let hard_num: f64 = parse_quantity(&hard_val.0);
+                            let used_num: f64 = parse_quantity(&used_val.0);
+
+                            if hard_num > 0.0 {
+                                let usage_pct = (used_num / hard_num) * 100.0;
+
+                                if used_num >= hard_num {
+                                    issues.push(
+                                        DebugIssue::new(
+                                            Severity::Critical,
+                                            DebugCategory::Resources,
+                                            "ResourceQuota",
+                                            &quota_name,
+                                            "Quota Exceeded",
+                                            format!(
+                                                "Resource '{}' quota exhausted: {} / {}",
+                                                resource, used_val.0, hard_val.0
+                                            ),
+                                        )
+                                        .with_namespace(&quota_ns)
+                                        .with_remediation(
+                                            "Increase quota or reduce resource usage",
+                                        ),
+                                    );
+                                } else if usage_pct >= 90.0 {
+                                    issues.push(
+                                        DebugIssue::new(
+                                            Severity::Warning,
+                                            DebugCategory::Resources,
+                                            "ResourceQuota",
+                                            &quota_name,
+                                            "Quota Near Limit",
+                                            format!(
+                                                "Resource '{}' at {:.0}% of quota: {} / {}",
+                                                resource, usage_pct, used_val.0, hard_val.0
+                                            ),
+                                        )
+                                        .with_namespace(&quota_ns)
+                                        .with_remediation(
+                                            "Consider increasing quota before exhaustion",
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check if namespaces have quotas (informational)
+    if namespace.is_none() {
+        let namespaces: Api<Namespace> = Api::all(client.clone());
+        if let Ok(ns_list) = namespaces.list(&ListParams::default()).await {
+            for ns in ns_list {
+                let ns_name = ns.metadata.name.clone().unwrap_or_default();
+
+                // Skip system namespaces
+                if ns_name.starts_with("kube-") || ns_name == "default" {
+                    continue;
+                }
+
+                let ns_quotas: Api<ResourceQuota> = Api::namespaced(client.clone(), &ns_name);
+                if let Ok(quota_list) = ns_quotas.list(&ListParams::default()).await {
+                    if quota_list.items.is_empty() {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Info,
+                                DebugCategory::Resources,
+                                "Namespace",
+                                &ns_name,
+                                "No ResourceQuota",
+                                "Namespace has no ResourceQuota configured",
+                            )
+                            .with_remediation(
+                                "Consider adding ResourceQuota for resource governance",
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Check LimitRanges
+    let limit_ranges: Api<LimitRange> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    // Check for events related to quota/limit issues
+    let events: Api<k8s_openapi::api::core::v1::Event> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    if let Ok(event_list) = events.list(&ListParams::default()).await {
+        for event in event_list {
+            let reason = event.reason.as_deref().unwrap_or("");
+            let message = event.message.as_deref().unwrap_or("");
+
+            if reason == "FailedCreate" && message.contains("exceeded quota") {
+                let involved = event
+                    .involved_object
+                    .name
+                    .clone()
+                    .unwrap_or_default();
+                let event_ns = event.metadata.namespace.clone().unwrap_or_default();
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Critical,
+                        DebugCategory::Resources,
+                        "ResourceQuota",
+                        &involved,
+                        "Quota Exceeded",
+                        format!("Resource creation blocked by quota: {}", message),
+                    )
+                    .with_namespace(&event_ns)
+                    .with_remediation("Increase quota or reduce resource requests"),
+                );
+            }
+
+            if message.contains("LimitRange") || reason == "LimitRangeViolation" {
+                let involved = event
+                    .involved_object
+                    .name
+                    .clone()
+                    .unwrap_or_default();
+                let event_ns = event.metadata.namespace.clone().unwrap_or_default();
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Warning,
+                        DebugCategory::Resources,
+                        "LimitRange",
+                        &involved,
+                        "LimitRange Violation",
+                        format!("Resource violates LimitRange: {}", message),
+                    )
+                    .with_namespace(&event_ns)
+                    .with_remediation("Adjust resource requests/limits to comply with LimitRange"),
+                );
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Parse Kubernetes quantity string to f64
+fn parse_quantity(s: &str) -> f64 {
+    let s = s.trim();
+    if s.is_empty() {
+        return 0.0;
+    }
+
+    // Handle suffixes
+    let (num_str, multiplier) = if s.ends_with("Ki") {
+        (&s[..s.len() - 2], 1024.0)
+    } else if s.ends_with("Mi") {
+        (&s[..s.len() - 2], 1024.0 * 1024.0)
+    } else if s.ends_with("Gi") {
+        (&s[..s.len() - 2], 1024.0 * 1024.0 * 1024.0)
+    } else if s.ends_with("Ti") {
+        (&s[..s.len() - 2], 1024.0 * 1024.0 * 1024.0 * 1024.0)
+    } else if s.ends_with('k') || s.ends_with('K') {
+        (&s[..s.len() - 1], 1000.0)
+    } else if s.ends_with('m') {
+        (&s[..s.len() - 1], 0.001)
+    } else if s.ends_with('M') {
+        (&s[..s.len() - 1], 1_000_000.0)
+    } else if s.ends_with('G') {
+        (&s[..s.len() - 1], 1_000_000_000.0)
+    } else {
+        (s, 1.0)
+    };
+
+    num_str.parse::<f64>().unwrap_or(0.0) * multiplier
+}
+
+// ============================================================================
+// AWS-specific checks
+// ============================================================================
+
+/// Check for AWS Load Balancer Controller issues
+pub async fn check_load_balancer_issues(client: &Client) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::apps::v1::Deployment;
+    use k8s_openapi::api::core::v1::Service;
+    use k8s_openapi::api::networking::v1::Ingress;
+
+    let mut issues = Vec::new();
+
+    let pods: Api<Pod> = Api::namespaced(client.clone(), "kube-system");
+
+    // Check for AWS Load Balancer Controller
+    let lb_controller = pods
+        .list(&ListParams::default().labels("app.kubernetes.io/name=aws-load-balancer-controller"))
+        .await
+        .map(|list| list.items)
+        .unwrap_or_default();
+
+    if lb_controller.is_empty() {
+        // Check if there are any LoadBalancer services or Ingresses
+        let services: Api<Service> = Api::all(client.clone());
+        let has_lb_services = services
+            .list(&ListParams::default())
+            .await
+            .map(|list| {
+                list.items.iter().any(|svc| {
+                    svc.spec
+                        .as_ref()
+                        .and_then(|s| s.type_.as_ref())
+                        .map(|t| t == "LoadBalancer")
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+
+        let ingresses: Api<Ingress> = Api::all(client.clone());
+        let has_ingresses = ingresses
+            .list(&ListParams::default())
+            .await
+            .map(|list| !list.items.is_empty())
+            .unwrap_or(false);
+
+        if has_lb_services || has_ingresses {
+            issues.push(
+                DebugIssue::new(
+                    Severity::Warning,
+                    DebugCategory::Network,
+                    "Deployment",
+                    "aws-load-balancer-controller",
+                    "AWS LB Controller Not Found",
+                    "AWS Load Balancer Controller not found but LoadBalancer services/Ingresses exist",
+                )
+                .with_namespace("kube-system")
+                .with_remediation(
+                    "Install AWS Load Balancer Controller: https://kubernetes-sigs.github.io/aws-load-balancer-controller",
+                ),
+            );
+        }
+    } else {
+        // Check if controller is healthy
+        let unhealthy: Vec<_> = lb_controller
+            .iter()
+            .filter(|pod| {
+                pod.status
+                    .as_ref()
+                    .and_then(|s| s.phase.as_ref())
+                    .map(|p| p != "Running")
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        if !unhealthy.is_empty() {
+            issues.push(
+                DebugIssue::new(
+                    Severity::Critical,
+                    DebugCategory::Network,
+                    "Deployment",
+                    "aws-load-balancer-controller",
+                    "AWS LB Controller Unhealthy",
+                    format!(
+                        "{} of {} AWS LB Controller pods are not running",
+                        unhealthy.len(),
+                        lb_controller.len()
+                    ),
+                )
+                .with_namespace("kube-system")
+                .with_remediation("Check aws-load-balancer-controller pod logs"),
+            );
+        }
+    }
+
+    // Check for stuck LoadBalancer services
+    let services: Api<Service> = Api::all(client.clone());
+    if let Ok(svc_list) = services.list(&ListParams::default()).await {
+        for svc in svc_list {
+            let svc_name = svc.metadata.name.clone().unwrap_or_default();
+            let svc_ns = svc.metadata.namespace.clone().unwrap_or_default();
+
+            let is_lb = svc
+                .spec
+                .as_ref()
+                .and_then(|s| s.type_.as_ref())
+                .map(|t| t == "LoadBalancer")
+                .unwrap_or(false);
+
+            if is_lb {
+                let has_ip = svc
+                    .status
+                    .as_ref()
+                    .and_then(|s| s.load_balancer.as_ref())
+                    .and_then(|lb| lb.ingress.as_ref())
+                    .map(|i| !i.is_empty())
+                    .unwrap_or(false);
+
+                if !has_ip {
+                    let age = svc
+                        .metadata
+                        .creation_timestamp
+                        .as_ref()
+                        .map(|ts| {
+                            let now = chrono::Utc::now();
+                            let created: chrono::DateTime<chrono::Utc> = ts.0;
+                            now.signed_duration_since(created).num_minutes()
+                        })
+                        .unwrap_or(0);
+
+                    if age > 5 {
+                        // Check annotations for errors
+                        let annotations = svc.metadata.annotations.clone().unwrap_or_default();
+                        let has_lb_annotations = annotations
+                            .keys()
+                            .any(|k| k.contains("service.beta.kubernetes.io") || k.contains("alb.ingress"));
+
+                        let remediation = if !has_lb_annotations {
+                            "Add service.beta.kubernetes.io/aws-load-balancer-* annotations"
+                        } else {
+                            "Check AWS Load Balancer Controller logs for provisioning errors"
+                        };
+
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Critical,
+                                DebugCategory::Network,
+                                "Service",
+                                &svc_name,
+                                "LoadBalancer Not Provisioned",
+                                format!(
+                                    "LoadBalancer service pending for {} minutes without external IP",
+                                    age
+                                ),
+                            )
+                            .with_namespace(&svc_ns)
+                            .with_remediation(remediation),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check for ECR image pull issues
+pub async fn check_ecr_issues(
+    client: &Client,
+    namespace: Option<&str>,
+) -> Result<Vec<DebugIssue>, KcError> {
+    let mut issues = Vec::new();
+
+    let pods: Api<Pod> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    let pod_list = pods
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| KcError::Config(e.to_string()))?;
+
+    for pod in pod_list {
+        let pod_name = pod.metadata.name.clone().unwrap_or_default();
+        let pod_ns = pod.metadata.namespace.clone().unwrap_or_default();
+
+        // Check container images
+        if let Some(spec) = &pod.spec {
+            for container in &spec.containers {
+                let image = container.image.as_deref().unwrap_or("");
+
+                // Check if image is from ECR
+                if image.contains(".dkr.ecr.") && image.contains(".amazonaws.com") {
+                    // Check for image pull issues
+                    if let Some(status) = &pod.status {
+                        if let Some(container_statuses) = &status.container_statuses {
+                            for cs in container_statuses {
+                                if cs.name != container.name {
+                                    continue;
+                                }
+
+                                if let Some(state) = &cs.state {
+                                    if let Some(waiting) = &state.waiting {
+                                        let reason = waiting.reason.as_deref().unwrap_or("");
+                                        let message = waiting.message.as_deref().unwrap_or("");
+
+                                        if reason == "ImagePullBackOff" || reason == "ErrImagePull" {
+                                            let remediation = if message.contains("unauthorized")
+                                                || message.contains("no basic auth")
+                                            {
+                                                "Check ECR authentication: ensure nodes have IAM permissions for ecr:GetAuthorizationToken, ecr:BatchGetImage, ecr:GetDownloadUrlForLayer"
+                                            } else if message.contains("not found")
+                                                || message.contains("manifest unknown")
+                                            {
+                                                "Verify image exists in ECR repository with correct tag"
+                                            } else if message.contains("timeout") {
+                                                "Check VPC endpoints for ECR or NAT gateway connectivity"
+                                            } else {
+                                                "Check ECR permissions and repository policy"
+                                            };
+
+                                            issues.push(
+                                                DebugIssue::new(
+                                                    Severity::Critical,
+                                                    DebugCategory::Pod,
+                                                    "Pod",
+                                                    &pod_name,
+                                                    "ECR Image Pull Failed",
+                                                    format!(
+                                                        "Cannot pull ECR image '{}': {}",
+                                                        image, message
+                                                    ),
+                                                )
+                                                .with_namespace(&pod_ns)
+                                                .with_remediation(remediation),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check events for ECR-related issues
+    let events: Api<k8s_openapi::api::core::v1::Event> = if let Some(ns) = namespace {
+        Api::namespaced(client.clone(), ns)
+    } else {
+        Api::all(client.clone())
+    };
+
+    if let Ok(event_list) = events.list(&ListParams::default()).await {
+        for event in event_list {
+            let message = event.message.as_deref().unwrap_or("");
+            let reason = event.reason.as_deref().unwrap_or("");
+
+            if (reason == "Failed" || reason == "FailedPull") && message.contains("ecr") {
+                let involved = event
+                    .involved_object
+                    .name
+                    .clone()
+                    .unwrap_or_default();
+                let event_ns = event.metadata.namespace.clone().unwrap_or_default();
+
+                if message.contains("rate limit") {
+                    issues.push(
+                        DebugIssue::new(
+                            Severity::Warning,
+                            DebugCategory::Pod,
+                            "Pod",
+                            &involved,
+                            "ECR Rate Limit",
+                            "ECR pull rate limit exceeded",
+                        )
+                        .with_namespace(&event_ns)
+                        .with_remediation(
+                            "Use ECR pull-through cache or request rate limit increase",
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Check for observability (CloudWatch, Fluent Bit) issues
+pub async fn check_observability_issues(client: &Client) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::apps::v1::DaemonSet;
+
+    let mut issues = Vec::new();
+
+    let pods: Api<Pod> = Api::namespaced(client.clone(), "kube-system");
+    let daemonsets: Api<DaemonSet> = Api::namespaced(client.clone(), "kube-system");
+
+    // Check for CloudWatch agent
+    let cloudwatch_pods = pods
+        .list(&ListParams::default().labels("name=cloudwatch-agent"))
+        .await
+        .map(|list| list.items)
+        .unwrap_or_default();
+
+    // Check for Fluent Bit
+    let fluentbit_pods = pods
+        .list(&ListParams::default().labels("app.kubernetes.io/name=fluent-bit"))
+        .await
+        .map(|list| list.items)
+        .unwrap_or_default();
+
+    // Also check for aws-for-fluent-bit
+    let aws_fluentbit_pods = pods
+        .list(&ListParams::default().labels("app.kubernetes.io/name=aws-for-fluent-bit"))
+        .await
+        .map(|list| list.items)
+        .unwrap_or_default();
+
+    // Check for ADOT collector
+    let adot_pods = pods
+        .list(&ListParams::default().labels("app.kubernetes.io/name=aws-otel-collector"))
+        .await
+        .map(|list| list.items)
+        .unwrap_or_default();
+
+    // Report if CloudWatch agent is unhealthy
+    if !cloudwatch_pods.is_empty() {
+        let unhealthy: Vec<_> = cloudwatch_pods
+            .iter()
+            .filter(|pod| {
+                pod.status
+                    .as_ref()
+                    .and_then(|s| s.phase.as_ref())
+                    .map(|p| p != "Running")
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        if !unhealthy.is_empty() {
+            issues.push(
+                DebugIssue::new(
+                    Severity::Warning,
+                    DebugCategory::Cluster,
+                    "DaemonSet",
+                    "cloudwatch-agent",
+                    "CloudWatch Agent Unhealthy",
+                    format!(
+                        "{} of {} CloudWatch agent pods are not running",
+                        unhealthy.len(),
+                        cloudwatch_pods.len()
+                    ),
+                )
+                .with_namespace("kube-system")
+                .with_remediation("Check cloudwatch-agent pod logs and ConfigMap"),
+            );
+        }
+    }
+
+    // Check Fluent Bit health
+    let all_fluentbit: Vec<_> = fluentbit_pods
+        .iter()
+        .chain(aws_fluentbit_pods.iter())
+        .collect();
+
+    if !all_fluentbit.is_empty() {
+        let unhealthy: Vec<_> = all_fluentbit
+            .iter()
+            .filter(|pod| {
+                pod.status
+                    .as_ref()
+                    .and_then(|s| s.phase.as_ref())
+                    .map(|p| *p != "Running")
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        if !unhealthy.is_empty() {
+            issues.push(
+                DebugIssue::new(
+                    Severity::Warning,
+                    DebugCategory::Cluster,
+                    "DaemonSet",
+                    "fluent-bit",
+                    "Fluent Bit Unhealthy",
+                    format!(
+                        "{} of {} Fluent Bit pods are not running",
+                        unhealthy.len(),
+                        all_fluentbit.len()
+                    ),
+                )
+                .with_namespace("kube-system")
+                .with_remediation("Check fluent-bit pod logs and ConfigMap"),
+            );
+        }
+    }
+
+    // Check ADOT collector health
+    if !adot_pods.is_empty() {
+        let unhealthy: Vec<_> = adot_pods
+            .iter()
+            .filter(|pod| {
+                pod.status
+                    .as_ref()
+                    .and_then(|s| s.phase.as_ref())
+                    .map(|p| p != "Running")
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        if !unhealthy.is_empty() {
+            issues.push(
+                DebugIssue::new(
+                    Severity::Warning,
+                    DebugCategory::Cluster,
+                    "Deployment",
+                    "aws-otel-collector",
+                    "ADOT Collector Unhealthy",
+                    format!(
+                        "{} of {} ADOT collector pods are not running",
+                        unhealthy.len(),
+                        adot_pods.len()
+                    ),
+                )
+                .with_namespace("kube-system")
+                .with_remediation("Check aws-otel-collector pod logs"),
+            );
+        }
+    }
+
+    // Info: No logging solution detected
+    if cloudwatch_pods.is_empty() && all_fluentbit.is_empty() {
+        issues.push(
+            DebugIssue::new(
+                Severity::Info,
+                DebugCategory::Cluster,
+                "Cluster",
+                "observability",
+                "No Log Aggregation",
+                "No CloudWatch agent or Fluent Bit detected for log aggregation",
+            )
+            .with_remediation(
+                "Consider installing CloudWatch Container Insights or Fluent Bit for log aggregation",
+            ),
+        );
+    }
+
+    Ok(issues)
+}
+
+/// Check for node group and autoscaling issues
+pub async fn check_node_group_issues(client: &Client) -> Result<Vec<DebugIssue>, KcError> {
+    use k8s_openapi::api::apps::v1::Deployment;
+
+    let mut issues = Vec::new();
+
+    let nodes: Api<Node> = Api::all(client.clone());
+    let node_list = nodes
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| KcError::Config(e.to_string()))?;
+
+    // Check node conditions
+    for node in &node_list {
+        let node_name = node.metadata.name.clone().unwrap_or_default();
+        let labels = node.metadata.labels.clone().unwrap_or_default();
+
+        if let Some(status) = &node.status {
+            if let Some(conditions) = &status.conditions {
+                for condition in conditions {
+                    match condition.type_.as_str() {
+                        "Ready" => {
+                            if condition.status != "True" {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Critical,
+                                        DebugCategory::Node,
+                                        "Node",
+                                        &node_name,
+                                        "Node Not Ready",
+                                        format!(
+                                            "Node is not ready: {}",
+                                            condition.message.as_deref().unwrap_or("unknown")
+                                        ),
+                                    )
+                                    .with_remediation("Check node status and kubelet logs"),
+                                );
+                            }
+                        }
+                        "MemoryPressure" => {
+                            if condition.status == "True" {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Warning,
+                                        DebugCategory::Node,
+                                        "Node",
+                                        &node_name,
+                                        "Memory Pressure",
+                                        "Node is experiencing memory pressure",
+                                    )
+                                    .with_remediation(
+                                        "Scale up the cluster or evict memory-heavy workloads",
+                                    ),
+                                );
+                            }
+                        }
+                        "DiskPressure" => {
+                            if condition.status == "True" {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Warning,
+                                        DebugCategory::Node,
+                                        "Node",
+                                        &node_name,
+                                        "Disk Pressure",
+                                        "Node is experiencing disk pressure",
+                                    )
+                                    .with_remediation(
+                                        "Clean up unused images/containers or increase disk size",
+                                    ),
+                                );
+                            }
+                        }
+                        "PIDPressure" => {
+                            if condition.status == "True" {
+                                issues.push(
+                                    DebugIssue::new(
+                                        Severity::Warning,
+                                        DebugCategory::Node,
+                                        "Node",
+                                        &node_name,
+                                        "PID Pressure",
+                                        "Node is running low on PIDs",
+                                    )
+                                    .with_remediation(
+                                        "Reduce number of pods or increase PID limits",
+                                    ),
+                                );
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Check node capacity vs allocatable
+            if let (Some(capacity), Some(allocatable)) =
+                (&status.capacity, &status.allocatable)
+            {
+                // Check if node is almost full
+                if let (Some(cap_pods), Some(alloc_pods)) =
+                    (capacity.get("pods"), allocatable.get("pods"))
+                {
+                    let cap: i32 = cap_pods.0.parse().unwrap_or(0);
+                    let alloc: i32 = alloc_pods.0.parse().unwrap_or(0);
+
+                    // Count running pods on this node
+                    let pods: Api<Pod> = Api::all(client.clone());
+                    let node_pods = pods
+                        .list(
+                            &ListParams::default()
+                                .fields(&format!("spec.nodeName={}", node_name)),
+                        )
+                        .await
+                        .map(|list| list.items.len())
+                        .unwrap_or(0);
+
+                    if alloc > 0 && node_pods as i32 >= alloc - 2 {
+                        issues.push(
+                            DebugIssue::new(
+                                Severity::Warning,
+                                DebugCategory::Node,
+                                "Node",
+                                &node_name,
+                                "Near Pod Capacity",
+                                format!(
+                                    "Node has {} pods, near capacity of {}",
+                                    node_pods, alloc
+                                ),
+                            )
+                            .with_remediation(
+                                "Enable Cluster Autoscaler or manually add more nodes",
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Check for Spot instance
+        if labels.get("node.kubernetes.io/lifecycle").map(|v| v.as_str()) == Some("spot")
+            || labels.get("eks.amazonaws.com/capacityType").map(|v| v.as_str()) == Some("SPOT")
+        {
+            // Check if Spot interruption handler is installed
+            let pods: Api<Pod> = Api::namespaced(client.clone(), "kube-system");
+            let spot_handlers = pods
+                .list(&ListParams::default().labels("app=aws-node-termination-handler"))
+                .await
+                .map(|list| list.items)
+                .unwrap_or_default();
+
+            if spot_handlers.is_empty() {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Warning,
+                        DebugCategory::Node,
+                        "Node",
+                        &node_name,
+                        "Spot Without Handler",
+                        "Spot instance detected without AWS Node Termination Handler",
+                    )
+                    .with_remediation(
+                        "Install AWS Node Termination Handler for graceful Spot interruption handling",
+                    ),
+                );
+                // Only report once
+                break;
+            }
+        }
+    }
+
+    // Check for Cluster Autoscaler
+    let deployments: Api<Deployment> = Api::namespaced(client.clone(), "kube-system");
+    let cluster_autoscaler = deployments
+        .get("cluster-autoscaler")
+        .await
+        .ok();
+
+    // Check for Karpenter
+    let karpenter = deployments
+        .get("karpenter")
+        .await
+        .ok();
+
+    if cluster_autoscaler.is_none() && karpenter.is_none() {
+        issues.push(
+            DebugIssue::new(
+                Severity::Info,
+                DebugCategory::Cluster,
+                "Cluster",
+                "autoscaling",
+                "No Cluster Autoscaler",
+                "Neither Cluster Autoscaler nor Karpenter detected",
+            )
+            .with_remediation(
+                "Consider enabling Cluster Autoscaler or Karpenter for automatic node scaling",
+            ),
+        );
+    } else if let Some(ca) = cluster_autoscaler {
+        // Check CA health
+        if let Some(status) = &ca.status {
+            let available = status.available_replicas.unwrap_or(0);
+            let desired = ca.spec.as_ref().and_then(|s| s.replicas).unwrap_or(1);
+
+            if available < desired {
+                issues.push(
+                    DebugIssue::new(
+                        Severity::Critical,
+                        DebugCategory::Cluster,
+                        "Deployment",
+                        "cluster-autoscaler",
+                        "Cluster Autoscaler Unavailable",
+                        format!(
+                            "{} of {} Cluster Autoscaler replicas available",
+                            available, desired
+                        ),
+                    )
+                    .with_namespace("kube-system")
+                    .with_remediation("Check cluster-autoscaler pod logs"),
+                );
             }
         }
     }

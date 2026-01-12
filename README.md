@@ -372,24 +372,165 @@ The AWS SDK is **enabled by default** for full EKS debugging with IAM validation
 cargo build --no-default-features
 ```
 
-AWS SDK enables these additional checks:
+The `kc debug eks` command runs **200+ diagnostic checks** covering both AWS/EKS provider-specific issues and common Kubernetes issues on EKS clusters.
 
-| Check | Description |
-|-------|-------------|
-| IRSA IAM Validation | Verifies IAM roles exist and have correct trust policies |
-| Cluster Config | Checks OIDC provider, endpoint access, logging, encryption |
-| Pod Identity | Validates EKS Pod Identity associations |
+#### AWS SDK-Enhanced Checks (requires credentials)
 
-**EKS Debug Checks (always available):**
+| Category | Checks |
+|----------|--------|
+| IRSA IAM Validation | Role existence, trust policy OIDC validation, audience verification |
+| Cluster Config | OIDC provider, endpoint access, logging, encryption settings |
+| Pod Identity | EKS Pod Identity associations validation |
 
-| Check | Description |
-|-------|-------------|
-| IRSA Annotations | Validates `eks.amazonaws.com/role-arn` on ServiceAccounts |
-| VPC CNI Health | Checks aws-node DaemonSet, detects CrashLoopBackOff |
-| EKS Add-ons | CoreDNS, kube-proxy, EBS CSI driver status |
-| Node Config | NetworkUnavailable conditions, IMDSv2, nodegroup membership |
-| Pod Identity Agent | EKS Pod Identity agent health |
-| aws-auth ConfigMap | IAM role/user mappings validation |
+#### EKS Provider-Specific Checks (~100 checks)
+
+**IAM & Authentication**
+- IRSA role ARN format validation
+- IRSA environment variables injection
+- aws-auth ConfigMap parsing and validation
+- Duplicate role mappings detection
+- system:masters group usage warnings
+- Cross-account trust policy issues
+- Static credentials detection
+
+**VPC & Networking**
+- VPC CNI (aws-node) health and CrashLoopBackOff detection
+- IPAMD errors and IP address exhaustion
+- Secondary CIDR configuration
+- Custom networking (ENIConfig) validation
+- Prefix delegation issues
+- Security group per pod configuration
+- WARM_IP_TARGET/MINIMUM_IP_TARGET settings
+- ENI trunking status
+
+**Load Balancer**
+- AWS Load Balancer Controller installation and health
+- ALB/NLB provisioning status
+- Target group health
+- Subnet auto-discovery and tagging
+- SSL certificate validation (ACM)
+- NLB IP target mode issues
+- TargetGroupBinding status
+
+**Storage**
+- EBS CSI driver installation and health
+- EFS CSI driver status
+- PVC pending issues (wrong AZ, mount failures)
+- StorageClass configuration (gp2 deprecation)
+- CSI driver IRSA configuration
+
+**Node Groups & Scaling**
+- Node conditions (NotReady, MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable)
+- Cluster Autoscaler installation and health
+- Karpenter provisioner issues
+- Spot interruption handler
+- Node AMI version
+- IMDSv2 enforcement
+- Node capacity analysis
+
+**ECR & Image Pull**
+- ImagePullBackOff specific to ECR
+- ECR authentication token issues
+- Cross-region pull problems
+- Private ECR without VPC endpoint
+
+**Observability**
+- CloudWatch agent status
+- Fluent Bit installation
+- Container Insights configuration
+- ADOT collector issues
+- Control plane logging status
+
+**EKS Add-ons & Control Plane**
+- CoreDNS health and CrashLoopBackOff
+- kube-proxy version mismatch
+- EKS add-on degraded status
+- Pod Identity agent health
+- Cluster version EOL warnings
+
+#### Kubernetes Checks on EKS (~100 checks)
+
+**Pod Issues**
+- CrashLoopBackOff, ImagePullBackOff, ErrImagePull
+- OOMKilled containers
+- Evicted pods
+- Pending/unschedulable pods
+- Stuck in Terminating/ContainerCreating
+- High restart counts
+- Init container failures
+- Probe failures (liveness, readiness, startup)
+- Resource limits not set
+- Security context issues (privileged, hostNetwork, hostPID, root)
+
+**Deployment Issues**
+- Replicas unavailable
+- Stuck rollouts
+- Exceeded progress deadline
+- HPA at max replicas
+- HPA unable to fetch metrics
+- PDB blocking deployments
+
+**Service & DNS**
+- Service with no endpoints
+- Selector/port mismatches
+- EndpointSlice health
+- DNS resolution timeouts
+- ExternalName service issues
+- NodeLocal DNSCache status
+
+**ConfigMap & Secret Issues**
+- Missing ConfigMap/Secret references
+- Mount permission denied
+- Oversized ConfigMaps (>1MB)
+- External Secrets Operator status
+- Secrets Store CSI driver health
+
+**RBAC & Security**
+- cluster-admin bindings
+- Wildcard permissions in Roles
+- Default ServiceAccount usage
+- Missing ServiceAccounts
+- Pod Security Standards violations
+- Namespace PSS label status
+
+**Scheduling Issues**
+- Insufficient CPU/memory
+- Node selector/affinity mismatches
+- Taint tolerations
+- Topology spread constraint violations
+- PriorityClass preemption issues
+
+**StatefulSet Issues**
+- Stuck updates
+- Unbound PVCs
+- Missing headless services
+- OrderedReady violations
+
+**Job & CronJob Issues**
+- Failed jobs
+- Deadline exceeded
+- Backoff limit reached
+- CronJob missed schedules
+- Concurrency conflicts
+
+**Ingress Issues**
+- Ingress with no address
+- Missing backend services
+- TLS secret issues
+- IngressClass not found
+- Host/path conflicts
+
+**Webhook & Admission Issues**
+- Validating webhook timeouts
+- Mutating webhook failures
+- Webhook service unavailability
+- Certificate expiration
+- failurePolicy=Fail issues
+
+**Resource Quotas & Limits**
+- ResourceQuota exceeded
+- LimitRange violations
+- Namespace quota warnings
 
 Without AWS credentials, K8s-side checks still run with graceful degradation.
 
